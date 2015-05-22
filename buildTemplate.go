@@ -41,13 +41,13 @@ type SiteMapLink struct {
 }
 
 type WebLink struct {
-	Title string
-	Link  string
+	Title string `json:"name"`
+	Link  string `json:"url"`
 }
 
 type HobbyProject struct {
-	Title    string    `json:"link"`
-	Tooltip  string    `json:"link"`
+	Title    string    `json:"title"`
+	Tooltip  string    `json:"tooltip"`
 	Tools    string    `json:"tools"`
 	Links    []WebLink `json:"link"`
 	BodyList []string  `json:"desc"`
@@ -61,12 +61,12 @@ type JobObject struct {
 	Start   string `json:"start"`
 	End     string `json:"end"`
 	Body    string `json:"body"`
-	Games   []GameProject
+	Games   GameList
+	Date    time.Time
 }
 
 type GameProject struct {
 	Title     string   `json:"title"`
-	Platform  string   `json:"platform"`
 	Developer string   `json:"developer"`
 	Job       string   `json:"job"`
 	Publisher string   `json:"publisher"`
@@ -74,8 +74,19 @@ type GameProject struct {
 	Position  string   `json:"position"`
 	Website   string   `json:"website"`
 	Youtube   string   `json:"youtube"`
+	Platform  []string `json:"platform"`
 	Images    []string `json:"images"`
 	Body      []string `json:"body"`
+	Date      time.Time
+}
+
+type AboutMe struct {
+	Feed      BlogList
+	Hobby     HobbyList
+	Job       JobList
+	ShortFeed BlogList
+	GameList  GameList
+	Platforms []string
 }
 
 type TemplateRoot struct {
@@ -84,17 +95,27 @@ type TemplateRoot struct {
 
 type BlogList []*BlogPost
 type HobbyList []*HobbyProject
+type JobList []*JobObject
+type GameList []*GameProject
 
 var (
-	feed        BlogList
-	hobby       HobbyList
 	regUrlChar  *regexp.Regexp
 	regUrlSpace *regexp.Regexp
+	myData      *AboutMe
+	RootTemp    *template.Template
 )
 
 func (f BlogList) Len() int           { return len(f) }
 func (f BlogList) Swap(i, j int)      { f[i], f[j] = f[j], f[i] }
 func (f BlogList) Less(i, j int) bool { return f[i].Date.After(f[j].Date) }
+
+func (jo JobList) Len() int           { return len(jo) }
+func (jo JobList) Swap(i, j int)      { jo[i], jo[j] = jo[j], jo[i] }
+func (jo JobList) Less(i, j int) bool { return jo[i].Date.After(jo[j].Date) }
+
+func (gl GameList) Len() int           { return len(gl) }
+func (gl GameList) Swap(i, j int)      { gl[i], gl[j] = gl[j], gl[i] }
+func (gl GameList) Less(i, j int) bool { return gl[i].Date.After(gl[j].Date) }
 
 func (c BlogCat) UrlVer() string {
 	return regUrlSpace.ReplaceAllString(regUrlChar.ReplaceAllString(string(c), ""), "_")
@@ -103,6 +124,18 @@ func (c BlogCat) UrlVer() string {
 func init() {
 	regUrlChar = regexp.MustCompile("[^A-Za-z]")
 	regUrlSpace = regexp.MustCompile(" ")
+	myData = &AboutMe{
+		Feed:  BlogList{},
+		Hobby: HobbyList{},
+		Job:   JobList{},
+	}
+
+	var e error
+	RootTemp, e = template.ParseFiles("Templates/root.html")
+	if e != nil {
+		log.Fatalln(e)
+		return
+	}
 }
 
 func GenerateSiteMap() {
@@ -122,7 +155,7 @@ func GenerateSiteMap() {
 		Priority:   1.0,
 	})
 
-	for _, v := range feed {
+	for _, v := range myData.Feed {
 		siteLinks = append(siteLinks, SiteMapLink{
 			Loc:        "http://www.claire-blackshaw.com" + v.Link,
 			LastMod:    v.Date,
@@ -152,8 +185,8 @@ func GenerateSiteMap() {
 	f.Close()
 }
 
-func LoadJSONBlob(filename string, jObj interface{}) {
-
+func loadJSONBlob(filename string, jObj interface{}) {
+	log.Println("Loading ", filename)
 	jsonBlob, e := ioutil.ReadFile(filename)
 	if e != nil {
 		log.Fatalln(e)
@@ -166,23 +199,84 @@ func LoadJSONBlob(filename string, jObj interface{}) {
 	}
 }
 
-func GenerateHobby() {
-	var e error
-	os.RemoveAll("./hobby/")
-	e = os.MkdirAll("./hobby/", 0777)
+func GenerateJob() {
+	os.RemoveAll("./job/")
+	_ = os.MkdirAll("./job/", 0777)
 
-	LoadJSONBlob("data/hobby.js", &hobby)
+	loadJSONBlob("data/job.js", &myData.Job)
+	loadJSONBlob("data/work.js", &myData.GameList)
 
-	rootTemp, e := template.ParseFiles("Templates/root.html")
+	platformMap := make(map[string]int)
+
+	for _, j := range myData.Job {
+		const joblongform = "2006 January"
+		j.Date, _ = time.Parse(joblongform, j.Start)
+		for _, g := range myData.GameList {
+			if j.Company == g.Job {
+				j.Games = append(j.Games, g)
+
+				for _, p := range g.Platform {
+					platformMap[p] = platformMap[p] + 1
+				}
+
+				const gamelongform = "02 January 2006"
+				g.Date = time.Now()
+				if len(g.Released) > 1 {
+					g.Date, _ = time.Parse(gamelongform, g.Released)
+				}
+			}
+		}
+		sort.Sort(j.Games)
+	}
+	sort.Sort(myData.GameList)
+	sort.Sort(myData.Job)
+
+	myData.Platforms = make([]string, len(platformMap))
+
+	i := 0
+	for k := range platformMap {
+		myData.Platforms[i] = k
+		i += 1
+	}
+
+	genJobPage()
+}
+
+func genJobPage() {
+	jobIndexTemp, e := template.ParseFiles("Templates/job.html")
 	if e != nil {
 		log.Fatalln(e)
 		return
 	}
 
-	GenerateHobbyPage(rootTemp)
+	var outBuffer bytes.Buffer
+	jobIndexTemp.Execute(&outBuffer, myData.Job)
+
+	// Write out Frame
+	frameData := &SubPage{
+		Title:   "Games Career",
+		Content: template.HTML(outBuffer.String()),
+	}
+
+	f, fileErr := os.Create("./job/index.html")
+	if fileErr != nil {
+		log.Fatalln("Error in File ", fileErr)
+	}
+
+	RootTemp.Execute(f, frameData)
+	f.Close()
 }
 
-func GenerateHobbyPage(rootTemp *template.Template) {
+func GenerateHobby() {
+	os.RemoveAll("./hobby/")
+	_ = os.MkdirAll("./hobby/", 0777)
+
+	loadJSONBlob("data/hobby.js", &myData.Hobby)
+
+	genHobbyPage()
+}
+
+func genHobbyPage() {
 	hobbyIndexTemp, e := template.ParseFiles("Templates/hobby.html")
 	if e != nil {
 		log.Fatalln(e)
@@ -190,7 +284,11 @@ func GenerateHobbyPage(rootTemp *template.Template) {
 	}
 
 	var outBuffer bytes.Buffer
-	hobbyIndexTemp.Execute(&outBuffer, hobby)
+	e = hobbyIndexTemp.Execute(&outBuffer, myData.Hobby)
+	if e != nil {
+		log.Fatalln(e)
+		return
+	}
 
 	// Write out Frame
 	frameData := &SubPage{
@@ -203,7 +301,12 @@ func GenerateHobbyPage(rootTemp *template.Template) {
 		log.Fatalln("Error in File ", fileErr)
 	}
 
-	rootTemp.Execute(f, frameData)
+	e = RootTemp.Execute(f, frameData)
+	if e != nil {
+		log.Fatalln(e)
+		return
+	}
+
 	f.Close()
 }
 
@@ -213,13 +316,7 @@ func GenerateBlog() {
 	os.RemoveAll("./blog/")
 	e = os.MkdirAll("./blog/", 0777)
 
-	LoadJSONBlob("blogdata/blogData.js", &feed)
-
-	rootTemp, e := template.ParseFiles("Templates/root.html")
-	if e != nil {
-		log.Fatalln(e)
-		return
-	}
+	loadJSONBlob("blogdata/blogData.js", &myData.Feed)
 
 	blogTemp, e := template.ParseFiles("Templates/blogpost.html")
 	if e != nil {
@@ -236,16 +333,14 @@ func GenerateBlog() {
 	// Gather Catergories and filter out single use catergories
 	var catMap map[BlogCat]BlogList
 	catMap = make(map[BlogCat]BlogList)
-	for _, v := range feed {
-		GenerateBlogPage(v, blogTemp, rootTemp)
-
+	for _, v := range myData.Feed {
 		for _, c := range v.Category {
 			catMap[c] = append(catMap[c], v)
 		}
 	}
 
 	removedCat := []BlogCat{}
-	for _, v := range feed {
+	for _, v := range myData.Feed {
 		newCat := []BlogCat{}
 		for _, c := range v.Category {
 			if len(catMap[c]) < 2 {
@@ -256,20 +351,20 @@ func GenerateBlog() {
 			}
 		}
 		v.Category = newCat
-		GenerateBlogPage(v, blogTemp, rootTemp)
+		genBlogPage(v, blogTemp)
 
 	}
 	log.Println("Removed ", removedCat)
 
-	sort.Sort(feed)
-	GenerateBlogIndexPage(rootTemp)
+	sort.Sort(myData.Feed)
+	genBlogIndexPage()
 
 	for k, v := range catMap {
-		GenerateBlogCatergoryPage(k, v, rootTemp, blogCatTemp)
+		genBlogCatergoryPage(k, v, blogCatTemp)
 	}
 }
 
-func GenerateBlogIndexPage(rootTemp *template.Template) {
+func genBlogIndexPage() {
 	blogIndexTemp, e := template.ParseFiles("Templates/blogindex.html")
 	if e != nil {
 		log.Fatalln(e)
@@ -277,7 +372,7 @@ func GenerateBlogIndexPage(rootTemp *template.Template) {
 	}
 
 	var outBuffer bytes.Buffer
-	blogIndexTemp.Execute(&outBuffer, feed)
+	blogIndexTemp.Execute(&outBuffer, myData.Feed)
 
 	// Write out Frame
 	frameData := &SubPage{
@@ -290,12 +385,17 @@ func GenerateBlogIndexPage(rootTemp *template.Template) {
 		log.Fatalln("Error in File ", fileErr)
 	}
 
-	rootTemp.Execute(f, frameData)
+	e = RootTemp.Execute(f, frameData)
+	if e != nil {
+		log.Fatalln(e)
+		return
+	}
+
 	f.Close()
 }
 
-func GenerateBlogCatergoryPage(cat BlogCat, blist BlogList, rootTemp *template.Template, blogCat *template.Template) {
-
+func genBlogCatergoryPage(cat BlogCat, blist BlogList, blogCat *template.Template) {
+	var e error
 	var outBuffer bytes.Buffer
 	blogCat.Execute(&outBuffer, blist)
 
@@ -315,11 +415,17 @@ func GenerateBlogCatergoryPage(cat BlogCat, blist BlogList, rootTemp *template.T
 		log.Fatalln("Error in File ", fileErr)
 	}
 
-	rootTemp.Execute(f, frameData)
+	e = RootTemp.Execute(f, frameData)
+	if e != nil {
+		log.Fatalln(e)
+		return
+	}
+
 	f.Close()
 }
 
-func GenerateBlogPage(v *BlogPost, blogTemp *template.Template, rootTemp *template.Template) {
+func genBlogPage(v *BlogPost, blogTemp *template.Template) {
+	var e error
 
 	srcFile := fmt.Sprintf("blogdata/post/%s.html", v.Key)
 	bodyBytes, err := ioutil.ReadFile(srcFile)
@@ -356,7 +462,50 @@ func GenerateBlogPage(v *BlogPost, blogTemp *template.Template, rootTemp *templa
 		log.Fatalln("Error in File ", fileErr)
 	}
 
-	rootTemp.Execute(f, frameData)
-	f.Close()
+	e = RootTemp.Execute(f, frameData)
+	if e != nil {
+		log.Fatalln(e)
+		return
+	}
 
+	f.Close()
+}
+
+func subSlice(source []interface{}, limit int) []interface{} {
+	return source[0:limit]
+}
+
+func GenerateAbout() {
+	var e error
+
+	os.RemoveAll("./index.html")
+	aboutIndexTemp, e := template.ParseFiles("Templates/about.html")
+	if e != nil {
+		log.Fatalln(e)
+		return
+	}
+
+	myData.ShortFeed = myData.Feed[0:10]
+
+	var outBuffer bytes.Buffer
+	aboutIndexTemp.Execute(&outBuffer, myData)
+
+	// Write out Frame
+	frameData := &SubPage{
+		Title:   "Claire Blackshaw",
+		Content: template.HTML(outBuffer.String()),
+	}
+
+	f, fileErr := os.Create("./index.html")
+	if fileErr != nil {
+		log.Fatalln("Error in File ", fileErr)
+	}
+
+	e = RootTemp.Execute(f, frameData)
+	if e != nil {
+		log.Fatalln(e)
+		return
+	}
+
+	f.Close()
 }

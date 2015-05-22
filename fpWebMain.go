@@ -10,17 +10,27 @@ import (
 
 var buildDate string
 
-func main() {
-	log.Println(buildDate)
-
+func genWebsite() {
 	log.Println("Generating Blog ")
 	GenerateBlog()
 
 	log.Println("Generating Hobby ")
 	GenerateHobby()
 
+	log.Println("Generating Job ")
+	GenerateJob()
+
+	log.Println("Generating About ")
+	GenerateAbout()
+
 	log.Println("Generating Sitemap ")
 	GenerateSiteMap()
+}
+
+func main() {
+	log.Println(buildDate)
+
+	genWebsite()
 
 	go WebServeStaticFolder(":1667", ".")
 
@@ -35,11 +45,7 @@ func main() {
 		case 'x':
 			log.Fatalln("Exit")
 		case 'r':
-			log.Println("Generating Pages ")
-			GenerateBlog()
-
-			log.Println("Generating Sitemap ")
-			GenerateSiteMap()
+			genWebsite()
 		}
 	}
 }
