@@ -17,6 +17,7 @@ import (
 type SubPage struct {
 	Title   string        `json:"title"`
 	Content template.HTML `json:"content"`
+	Twitter *TwitterCard
 }
 
 type BlogCat string
@@ -80,6 +81,14 @@ type GameProject struct {
 	Date      time.Time
 }
 
+type TwitterCard struct {
+	Card        string
+	Site        string
+	Title       string
+	Description string
+	Image       string
+}
+
 type AboutMe struct {
 	Feed      BlogList
 	Hobby     HobbyList
@@ -99,10 +108,11 @@ type JobList []*JobObject
 type GameList []*GameProject
 
 var (
-	regUrlChar  *regexp.Regexp
-	regUrlSpace *regexp.Regexp
-	myData      *AboutMe
-	RootTemp    *template.Template
+	regUrlChar     *regexp.Regexp
+	regUrlSpace    *regexp.Regexp
+	regStripMarkup *regexp.Regexp
+	myData         *AboutMe
+	RootTemp       *template.Template
 )
 
 func (f BlogList) Len() int           { return len(f) }
@@ -124,6 +134,8 @@ func (c BlogCat) UrlVer() string {
 func init() {
 	regUrlChar = regexp.MustCompile("[^A-Za-z]")
 	regUrlSpace = regexp.MustCompile(" ")
+	regStripMarkup = regexp.MustCompile("<[^<>]*>")
+
 	myData = &AboutMe{
 		Feed:  BlogList{},
 		Hobby: HobbyList{},
@@ -451,10 +463,25 @@ func genBlogPage(v *BlogPost, blogTemp *template.Template) {
 	var outBuffer bytes.Buffer
 	blogTemp.Execute(&outBuffer, v)
 
+	// Twitter Card
+	sum := regStripMarkup.ReplaceAllString(string(v.Body), " ")
+	if len(sum) > 200 {
+		sum = sum[0:200]
+	}
+
+	tc := &TwitterCard{
+		Card:        "summary",
+		Site:        "@EvilKimau",
+		Title:       v.Title,
+		Description: sum,
+		Image:       "/images/TitleBoard_Square.png",
+	}
+
 	// Write out Frame
 	frameData := &SubPage{
 		Title:   v.Title,
 		Content: template.HTML(outBuffer.String()),
+		Twitter: tc,
 	}
 
 	f, fileErr := os.Create(fileLoc + "/index.html")
