@@ -215,8 +215,8 @@ func GenerateJob() {
 	os.RemoveAll("./job/")
 	_ = os.MkdirAll("./job/", 0777)
 
-	loadJSONBlob("data/job.js", &myData.Job)
-	loadJSONBlob("data/work.js", &myData.GameList)
+	loadJSONBlob("Data/job.js", &myData.Job)
+	loadJSONBlob("Data/work.js", &myData.GameList)
 
 	platformMap := make(map[string]int)
 
@@ -283,7 +283,7 @@ func GenerateHobby() {
 	os.RemoveAll("./hobby/")
 	_ = os.MkdirAll("./hobby/", 0777)
 
-	loadJSONBlob("data/hobby.js", &myData.Hobby)
+	loadJSONBlob("Data/hobby.js", &myData.Hobby)
 
 	genHobbyPage()
 }
