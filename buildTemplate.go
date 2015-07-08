@@ -488,12 +488,9 @@ func genBlogPage(v *BlogPost, blogTemp *template.Template) {
 	blogTemp.Execute(&outBuffer, v)
 
 	// Twitter Card
-	var sum string
-	if len(v.ShortDesc) > 4 {
-		sum = v.ShortDesc
-	} else {
+	if len(v.ShortDesc) < 4 {
 		// Build Desc
-		sum = regStripMarkup.ReplaceAllString(string(v.Body), " ")
+		sum := regStripMarkup.ReplaceAllString(string(v.Body), " ")
 		if len(sum) > 200 {
 			sum = sum[0:200]
 		}
@@ -505,8 +502,15 @@ func genBlogPage(v *BlogPost, blogTemp *template.Template) {
 		Card:        "summary",
 		Site:        "@EvilKimau",
 		Title:       v.Title,
-		Description: sum,
-		Image:       "/images/TitleBoard_Square.png",
+		Description: v.ShortDesc,
+		Image:       "/images/fp_twitter_tiny.png",
+	}
+
+	if len(v.BannerImage) > 3 {
+		tc.Card = "summary_large_image"
+		tc.Image = v.BannerImage
+	} else if len(v.SmallImage) > 3 {
+		tc.Image = v.SmallImage
 	}
 
 	// Write out Frame
