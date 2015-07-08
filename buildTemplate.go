@@ -23,14 +23,19 @@ type SubPage struct {
 type BlogCat string
 
 type BlogPost struct {
-	Key      string `json:"key"`
-	Title    string `json:"title"`
-	Link     string `json:"link"`
-	Pubdate  string `json:"pubDate"`
-	Date     time.Time
-	Category []BlogCat     `json:"category"`
-	Body     template.HTML `post Body`
-	DateStr  string        `friendly date string`
+	Key         string    `json:"key"`
+	Title       string    `json:"title"`
+	Link        string    `json:"link"`
+	Pubdate     string    `json:"pubDate"`
+	SmallImage  string    `json:"smlImage,omitempty"`
+	BannerImage string    `json:"bannerImage,omitempty"`
+	ShortDesc   string    `json:"desc,omitempty"`
+	RawCategory []BlogCat `json:"category"`
+
+	Category []BlogCat     `json:"-"`
+	Date     time.Time     `json:"-"`
+	Body     template.HTML `json:"-"`
+	DateStr  string        `json:"-"`
 }
 
 type SiteMapLink struct {
@@ -211,6 +216,22 @@ func loadJSONBlob(filename string, jObj interface{}) {
 	}
 }
 
+func saveJSONBlob(filename string, jObj interface{}) {
+	log.Println("Saving ", filename)
+	b, e := json.MarshalIndent(jObj, "", "  ")
+	if e != nil {
+		log.Fatalln("Error in JSON ", e)
+	}
+
+	os.Remove(filename)
+	e = ioutil.WriteFile(filename, b, 0777)
+	if e != nil {
+		log.Fatalln(e)
+		return
+	}
+
+}
+
 func GenerateJob() {
 	os.RemoveAll("./job/")
 	_ = os.MkdirAll("./job/", 0777)
@@ -322,6 +343,7 @@ func genHobbyPage() {
 	f.Close()
 }
 
+//////////////////////////////////
 func GenerateBlog() {
 	var e error
 
@@ -346,23 +368,22 @@ func GenerateBlog() {
 	var catMap map[BlogCat]BlogList
 	catMap = make(map[BlogCat]BlogList)
 	for _, v := range myData.Feed {
-		for _, c := range v.Category {
+		for _, c := range v.RawCategory {
 			catMap[c] = append(catMap[c], v)
 		}
 	}
 
 	removedCat := []BlogCat{}
 	for _, v := range myData.Feed {
-		newCat := []BlogCat{}
-		for _, c := range v.Category {
+		v.Category = []BlogCat{}
+		for _, c := range v.RawCategory {
 			if len(catMap[c]) < 2 {
 				delete(catMap, c)
 				removedCat = append(removedCat, "-"+c)
 			} else {
-				newCat = append(newCat, c)
+				v.Category = append(v.Category, c)
 			}
 		}
-		v.Category = newCat
 		genBlogPage(v, blogTemp)
 
 	}
@@ -374,6 +395,9 @@ func GenerateBlog() {
 	for k, v := range catMap {
 		genBlogCatergoryPage(k, v, blogCatTemp)
 	}
+
+	// Save Out
+	saveJSONBlob("blogdata/blogData2.js", &myData.Feed)
 }
 
 func genBlogIndexPage() {
@@ -464,9 +488,17 @@ func genBlogPage(v *BlogPost, blogTemp *template.Template) {
 	blogTemp.Execute(&outBuffer, v)
 
 	// Twitter Card
-	sum := regStripMarkup.ReplaceAllString(string(v.Body), " ")
-	if len(sum) > 200 {
-		sum = sum[0:200]
+	var sum string
+	if len(v.ShortDesc) > 4 {
+		sum = v.ShortDesc
+	} else {
+		// Build Desc
+		sum = regStripMarkup.ReplaceAllString(string(v.Body), " ")
+		if len(sum) > 200 {
+			sum = sum[0:200]
+		}
+
+		v.ShortDesc = sum
 	}
 
 	tc := &TwitterCard{
