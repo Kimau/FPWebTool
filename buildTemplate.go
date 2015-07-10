@@ -15,9 +15,11 @@ import (
 )
 
 type SubPage struct {
-	Title   string        `json:"title"`
-	Content template.HTML `json:"content"`
-	Twitter *TwitterCard
+	Title     string        `json:"title"`
+	Content   template.HTML `json:"content"`
+	ShortDesc string
+	FullURL   string
+	Twitter   *TwitterCard
 }
 
 type BlogCat string
@@ -116,6 +118,7 @@ var (
 	regUrlChar     *regexp.Regexp
 	regUrlSpace    *regexp.Regexp
 	regStripMarkup *regexp.Regexp
+	regCatchImage  *regexp.Regexp
 	myData         *AboutMe
 	RootTemp       *template.Template
 )
@@ -140,6 +143,7 @@ func init() {
 	regUrlChar = regexp.MustCompile("[^A-Za-z]")
 	regUrlSpace = regexp.MustCompile(" ")
 	regStripMarkup = regexp.MustCompile("<[^<>]*>")
+	regCatchImage = regexp.MustCompile("<img[^>]*\"(/images/Blog[^\"]*)\"[^>]*>")
 
 	myData = &AboutMe{
 		Feed:  BlogList{},
@@ -288,6 +292,7 @@ func genJobPage() {
 	// Write out Frame
 	frameData := &SubPage{
 		Title:   "Games Career",
+		FullURL: "http://www.flammablepenguins.com/job/",
 		Content: template.HTML(outBuffer.String()),
 	}
 
@@ -326,6 +331,7 @@ func genHobbyPage() {
 	// Write out Frame
 	frameData := &SubPage{
 		Title:   "Hobby",
+		FullURL: "http://www.flammablepenguins.com/hobby/",
 		Content: template.HTML(outBuffer.String()),
 	}
 
@@ -413,6 +419,7 @@ func genBlogIndexPage() {
 	// Write out Frame
 	frameData := &SubPage{
 		Title:   "Blog",
+		FullURL: "http://www.flammablepenguins.com/blog/",
 		Content: template.HTML(outBuffer.String()),
 	}
 
@@ -437,7 +444,8 @@ func genBlogCatergoryPage(cat BlogCat, blist BlogList, blogCat *template.Templat
 
 	// Write out Frame
 	frameData := &SubPage{
-		Title:   string(cat),
+		Title:   "Blog - " + string(cat),
+		FullURL: "http://www.flammablepenguins.com/blog/cat/" + cat.UrlVer() + "/",
 		Content: template.HTML(outBuffer.String()),
 	}
 
@@ -465,7 +473,38 @@ func genBlogPage(v *BlogPost, blogTemp *template.Template) {
 
 	srcFile := fmt.Sprintf("blogdata/post/%s.html", v.Key)
 	bodyBytes, err := ioutil.ReadFile(srcFile)
-	v.Body = template.HTML(string(bodyBytes))
+
+	// Extract Image
+	bodyString := string(bodyBytes)
+
+	// "/images/blog[^"]*"
+	needToSave := false
+	if len(v.BannerImage) < 3 {
+		bodyString = regCatchImage.ReplaceAllStringFunc(bodyString, func(m string) string {
+			imgFileName := regCatchImage.FindStringSubmatch(m)[1]
+
+			file, err := os.Open("." + imgFileName) // For read access.
+			if err != nil {
+				return ""
+			}
+			file.Close()
+
+			if len(v.BannerImage) < 3 {
+				v.BannerImage = imgFileName
+				needToSave = true
+				return ""
+			}
+			return m
+		})
+	}
+
+	if needToSave {
+		os.Remove(srcFile)
+		ioutil.WriteFile(srcFile, []byte(bodyString), 0777)
+	}
+
+	// Setup Template
+	v.Body = template.HTML(bodyString)
 
 	const longform = "Mon, 02 Jan 2006 15:04:05 -0700"
 	v.Date, err = time.Parse(longform, v.Pubdate)
@@ -503,21 +542,23 @@ func genBlogPage(v *BlogPost, blogTemp *template.Template) {
 		Site:        "@EvilKimau",
 		Title:       v.Title,
 		Description: v.ShortDesc,
-		Image:       "/images/fp_twitter_tiny.png",
+		Image:       "http://www.flammablepenguins.com/images/fp_twitter_tiny.png",
 	}
 
 	if len(v.BannerImage) > 3 {
 		tc.Card = "summary_large_image"
-		tc.Image = v.BannerImage
+		tc.Image = "http://www.flammablepenguins.com" + v.BannerImage
 	} else if len(v.SmallImage) > 3 {
-		tc.Image = v.SmallImage
+		tc.Image = "http://www.flammablepenguins.com" + v.SmallImage
 	}
 
 	// Write out Frame
 	frameData := &SubPage{
-		Title:   v.Title,
-		Content: template.HTML(outBuffer.String()),
-		Twitter: tc,
+		Title:     v.Title,
+		FullURL:   "http://www.flammablepenguins.com" + v.Link,
+		ShortDesc: v.ShortDesc,
+		Content:   template.HTML(outBuffer.String()),
+		Twitter:   tc,
 	}
 
 	f, fileErr := os.Create(fileLoc + "/index.html")
@@ -556,6 +597,7 @@ func GenerateAbout() {
 	// Write out Frame
 	frameData := &SubPage{
 		Title:   "Claire Blackshaw",
+		FullURL: "http://www.flammablepenguins.com/",
 		Content: template.HTML(outBuffer.String()),
 	}
 
