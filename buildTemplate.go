@@ -159,6 +159,16 @@ func init() {
 	}
 }
 
+func GetBlogPostByKey(key string) *BlogPost {
+	for _, v := range myData.Feed {
+		if v.Key == key {
+			return v
+		}
+	}
+
+	return nil
+}
+
 func GenerateSiteMap() {
 	var siteLinks []SiteMapLink
 
@@ -347,16 +357,6 @@ func genHobbyPage() {
 	}
 
 	f.Close()
-}
-
-//
-func ListBlog() []string {
-	x := []string{}
-	for _, v := range myData.Feed {
-		x = append(x, v.Key)
-	}
-
-	return x
 }
 
 //////////////////////////////////

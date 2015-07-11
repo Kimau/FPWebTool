@@ -61,7 +61,7 @@ func main() {
 	lines := scanForInput()
 
 	for {
-		fmt.Print("Enter Command: ")
+		fmt.Println("Enter Command: ")
 		select {
 		case line := <-lines:
 			processCommand(line)
