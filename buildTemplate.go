@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"encoding/xml"
-	"fmt"
 	"html/template"
 	"io/ioutil"
 	"log"
@@ -20,24 +19,6 @@ type SubPage struct {
 	ShortDesc string
 	FullURL   string
 	Twitter   *TwitterCard
-}
-
-type BlogCat string
-
-type BlogPost struct {
-	Key         string    `json:"key"`
-	Title       string    `json:"title"`
-	Link        string    `json:"link"`
-	Pubdate     string    `json:"pubDate"`
-	SmallImage  string    `json:"smlImage,omitempty"`
-	BannerImage string    `json:"bannerImage,omitempty"`
-	ShortDesc   string    `json:"desc,omitempty"`
-	RawCategory []BlogCat `json:"category"`
-
-	Category []BlogCat     `json:"-"`
-	Date     time.Time     `json:"-"`
-	Body     template.HTML `json:"-"`
-	DateStr  string        `json:"-"`
 }
 
 type SiteMapLink struct {
@@ -109,7 +90,6 @@ type TemplateRoot struct {
 	SubData interface{}
 }
 
-type BlogList []*BlogPost
 type HobbyList []*HobbyProject
 type JobList []*JobObject
 type GameList []*GameProject
@@ -122,10 +102,6 @@ var (
 	myData         *AboutMe
 	RootTemp       *template.Template
 )
-
-func (f BlogList) Len() int           { return len(f) }
-func (f BlogList) Swap(i, j int)      { f[i], f[j] = f[j], f[i] }
-func (f BlogList) Less(i, j int) bool { return f[i].Date.After(f[j].Date) }
 
 func (jo JobList) Len() int           { return len(jo) }
 func (jo JobList) Swap(i, j int)      { jo[i], jo[j] = jo[j], jo[i] }
@@ -151,22 +127,12 @@ func init() {
 		Job:   JobList{},
 	}
 
-	var e error
-	RootTemp, e = template.ParseFiles("Templates/root.html")
-	if e != nil {
-		log.Fatalln(e)
+	var err error
+	RootTemp, err = template.ParseFiles("Templates/root.html")
+	if err != nil {
+		log.Fatalln(err)
 		return
 	}
-}
-
-func GetBlogPostByKey(key string) *BlogPost {
-	for _, v := range myData.Feed {
-		if v.Key == key {
-			return v
-		}
-	}
-
-	return nil
 }
 
 func GenerateSiteMap() {
@@ -204,8 +170,8 @@ func GenerateSiteMap() {
 	<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 	`)
 	for _, v := range siteLinks {
-		s, e := xml.MarshalIndent(v, "  ", "  ")
-		if e != nil {
+		s, err := xml.MarshalIndent(v, "  ", "  ")
+		if err != nil {
 			log.Fatalln("Problem writing link ", err)
 		}
 		f.Write(s)
@@ -218,29 +184,29 @@ func GenerateSiteMap() {
 
 func loadJSONBlob(filename string, jObj interface{}) {
 	log.Println("Loading ", filename)
-	jsonBlob, e := ioutil.ReadFile(filename)
-	if e != nil {
-		log.Fatalln(e)
+	jsonBlob, err := ioutil.ReadFile(filename)
+	if err != nil {
+		log.Fatalln(err)
 		return
 	}
 
-	e = json.Unmarshal(jsonBlob, jObj)
-	if e != nil {
-		log.Fatalln("Error in JSON ", e)
+	err = json.Unmarshal(jsonBlob, jObj)
+	if err != nil {
+		log.Fatalln("Error in JSON ", err)
 	}
 }
 
 func saveJSONBlob(filename string, jObj interface{}) {
 	log.Println("Saving ", filename)
-	b, e := json.MarshalIndent(jObj, "", "  ")
-	if e != nil {
-		log.Fatalln("Error in JSON ", e)
+	b, err := json.MarshalIndent(jObj, "", "  ")
+	if err != nil {
+		log.Fatalln("Error in JSON ", err)
 	}
 
 	os.Remove(filename)
-	e = ioutil.WriteFile(filename, b, 0777)
-	if e != nil {
-		log.Fatalln(e)
+	err = ioutil.WriteFile(filename, b, 0777)
+	if err != nil {
+		log.Fatalln(err)
 		return
 	}
 
@@ -290,9 +256,9 @@ func GenerateJob() {
 }
 
 func genJobPage() {
-	jobIndexTemp, e := template.ParseFiles("Templates/job.html")
-	if e != nil {
-		log.Fatalln(e)
+	jobIndexTemp, err := template.ParseFiles("Templates/job.html")
+	if err != nil {
+		log.Fatalln(err)
 		return
 	}
 
@@ -325,16 +291,16 @@ func GenerateHobby() {
 }
 
 func genHobbyPage() {
-	hobbyIndexTemp, e := template.ParseFiles("Templates/hobby.html")
-	if e != nil {
-		log.Fatalln(e)
+	hobbyIndexTemp, err := template.ParseFiles("Templates/hobby.html")
+	if err != nil {
+		log.Fatalln(err)
 		return
 	}
 
 	var outBuffer bytes.Buffer
-	e = hobbyIndexTemp.Execute(&outBuffer, myData.Hobby)
-	if e != nil {
-		log.Fatalln(e)
+	err = hobbyIndexTemp.Execute(&outBuffer, myData.Hobby)
+	if err != nil {
+		log.Fatalln(err)
 		return
 	}
 
@@ -350,252 +316,22 @@ func genHobbyPage() {
 		log.Fatalln("Error in File ", fileErr)
 	}
 
-	e = RootTemp.Execute(f, frameData)
-	if e != nil {
-		log.Fatalln(e)
-		return
-	}
-
-	f.Close()
-}
-
-//////////////////////////////////
-func GenerateBlog() {
-	var e error
-
-	os.RemoveAll("./blog/")
-	e = os.MkdirAll("./blog/", 0777)
-
-	loadJSONBlob("blogdata/blogData.js", &myData.Feed)
-
-	blogTemp, e := template.ParseFiles("Templates/blogpost.html")
-	if e != nil {
-		log.Fatalln(e)
-		return
-	}
-
-	blogCatTemp, e := template.ParseFiles("Templates/blogcat.html")
-	if e != nil {
-		log.Fatalln(e)
-		return
-	}
-
-	// Gather Catergories and filter out single use catergories
-	var catMap map[BlogCat]BlogList
-	catMap = make(map[BlogCat]BlogList)
-	for _, v := range myData.Feed {
-		for _, c := range v.RawCategory {
-			catMap[c] = append(catMap[c], v)
-		}
-	}
-
-	removedCat := []BlogCat{}
-	for _, v := range myData.Feed {
-		v.Category = []BlogCat{}
-		for _, c := range v.RawCategory {
-			if len(catMap[c]) < 2 {
-				delete(catMap, c)
-				removedCat = append(removedCat, "-"+c)
-			} else {
-				v.Category = append(v.Category, c)
-			}
-		}
-		genBlogPage(v, blogTemp)
-
-	}
-	log.Println("Removed ", removedCat)
-
-	sort.Sort(myData.Feed)
-	genBlogIndexPage()
-
-	for k, v := range catMap {
-		genBlogCatergoryPage(k, v, blogCatTemp)
-	}
-
-	// Save Out
-	saveJSONBlob("blogdata/blogData2.js", &myData.Feed)
-}
-
-func genBlogIndexPage() {
-	blogIndexTemp, e := template.ParseFiles("Templates/blogindex.html")
-	if e != nil {
-		log.Fatalln(e)
-		return
-	}
-
-	var outBuffer bytes.Buffer
-	blogIndexTemp.Execute(&outBuffer, myData.Feed)
-
-	// Write out Frame
-	frameData := &SubPage{
-		Title:   "Blog",
-		FullURL: "http://www.flammablepenguins.com/blog/",
-		Content: template.HTML(outBuffer.String()),
-	}
-
-	f, fileErr := os.Create("./blog/index.html")
-	if fileErr != nil {
-		log.Fatalln("Error in File ", fileErr)
-	}
-
-	e = RootTemp.Execute(f, frameData)
-	if e != nil {
-		log.Fatalln(e)
-		return
-	}
-
-	f.Close()
-}
-
-func genBlogCatergoryPage(cat BlogCat, blist BlogList, blogCat *template.Template) {
-	var e error
-	var outBuffer bytes.Buffer
-	blogCat.Execute(&outBuffer, blist)
-
-	// Write out Frame
-	frameData := &SubPage{
-		Title:   "Blog - " + string(cat),
-		FullURL: "http://www.flammablepenguins.com/blog/cat/" + cat.UrlVer() + "/",
-		Content: template.HTML(outBuffer.String()),
-	}
-
-	err := os.MkdirAll("./blog/cat/"+cat.UrlVer(), 0777)
+	err = RootTemp.Execute(f, frameData)
 	if err != nil {
-		log.Fatalln("Error in Mkdir ", err)
-	}
-
-	f, fileErr := os.Create("./blog/cat/" + cat.UrlVer() + "/index.html")
-	if fileErr != nil {
-		log.Fatalln("Error in File ", fileErr)
-	}
-
-	e = RootTemp.Execute(f, frameData)
-	if e != nil {
-		log.Fatalln(e)
+		log.Fatalln(err)
 		return
 	}
 
 	f.Close()
-}
-
-func genBlogPage(v *BlogPost, blogTemp *template.Template) {
-	var e error
-
-	srcFile := fmt.Sprintf("blogdata/post/%s.html", v.Key)
-	bodyBytes, err := ioutil.ReadFile(srcFile)
-
-	// Extract Image
-	bodyString := string(bodyBytes)
-
-	// "/images/blog[^"]*"
-	needToSave := false
-	if len(v.BannerImage) < 3 {
-		bodyString = regCatchImage.ReplaceAllStringFunc(bodyString, func(m string) string {
-			imgFileName := regCatchImage.FindStringSubmatch(m)[1]
-
-			file, err := os.Open("." + imgFileName) // For read access.
-			if err != nil {
-				return ""
-			}
-			file.Close()
-
-			if len(v.BannerImage) < 3 {
-				v.BannerImage = imgFileName
-				needToSave = true
-				return ""
-			}
-			return m
-		})
-	}
-
-	if needToSave {
-		os.Remove(srcFile)
-		ioutil.WriteFile(srcFile, []byte(bodyString), 0777)
-	}
-
-	// Setup Template
-	v.Body = template.HTML(bodyString)
-
-	const longform = "Mon, 02 Jan 2006 15:04:05 -0700"
-	v.Date, err = time.Parse(longform, v.Pubdate)
-	if err != nil {
-		fmt.Println(err)
-	}
-
-	v.DateStr = fmt.Sprintf("%d %v %d", v.Date.Day(), v.Date.Month(), v.Date.Year())
-
-	fileLoc := fmt.Sprintf("./blog/%04d/%02d/%s/", v.Date.Year(), v.Date.Month(), v.Key)
-
-	log.Println(fileLoc)
-
-	err = os.MkdirAll(fileLoc, 0777)
-	if err != nil {
-		log.Fatalln("Error in Mkdir ", err)
-	}
-
-	var outBuffer bytes.Buffer
-	blogTemp.Execute(&outBuffer, v)
-
-	// Twitter Card
-	if len(v.ShortDesc) < 4 {
-		// Build Desc
-		sum := regStripMarkup.ReplaceAllString(string(v.Body), " ")
-		if len(sum) > 200 {
-			sum = sum[0:200]
-		}
-
-		v.ShortDesc = sum
-	}
-
-	tc := &TwitterCard{
-		Card:        "summary",
-		Site:        "@EvilKimau",
-		Title:       v.Title,
-		Description: v.ShortDesc,
-		Image:       "http://www.flammablepenguins.com/images/fp_twitter_tiny.png",
-	}
-
-	if len(v.BannerImage) > 3 {
-		tc.Card = "summary_large_image"
-		tc.Image = "http://www.flammablepenguins.com" + v.BannerImage
-	} else if len(v.SmallImage) > 3 {
-		tc.Image = "http://www.flammablepenguins.com" + v.SmallImage
-	}
-
-	// Write out Frame
-	frameData := &SubPage{
-		Title:     v.Title,
-		FullURL:   "http://www.flammablepenguins.com" + v.Link,
-		ShortDesc: v.ShortDesc,
-		Content:   template.HTML(outBuffer.String()),
-		Twitter:   tc,
-	}
-
-	f, fileErr := os.Create(fileLoc + "/index.html")
-	if fileErr != nil {
-		log.Fatalln("Error in File ", fileErr)
-	}
-
-	e = RootTemp.Execute(f, frameData)
-	if e != nil {
-		log.Fatalln(e)
-		return
-	}
-
-	f.Close()
-}
-
-func subSlice(source []interface{}, limit int) []interface{} {
-	return source[0:limit]
 }
 
 func GenerateAbout() {
-	var e error
+	var err error
 
 	os.RemoveAll("./index.html")
-	aboutIndexTemp, e := template.ParseFiles("Templates/about.html")
-	if e != nil {
-		log.Fatalln(e)
+	aboutIndexTemp, err := template.ParseFiles("Templates/about.html")
+	if err != nil {
+		log.Fatalln(err)
 		return
 	}
 
@@ -616,9 +352,9 @@ func GenerateAbout() {
 		log.Fatalln("Error in File ", fileErr)
 	}
 
-	e = RootTemp.Execute(f, frameData)
-	if e != nil {
-		log.Fatalln(e)
+	err = RootTemp.Execute(f, frameData)
+	if err != nil {
+		log.Fatalln(err)
 		return
 	}
 

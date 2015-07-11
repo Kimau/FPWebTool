@@ -44,8 +44,8 @@ func MakeWebFace(addr string, fileroot string) *WebFace {
 var EditTemplate, ListTemplate *template.Template
 
 func (wf *WebFace) MakeTemplates() {
-	var e error
-	ListTemplate, e = template.New("list").Parse(`<!DOCTYPE html>
+	var err error
+	ListTemplate, err = template.New("list").Parse(`<!DOCTYPE html>
 <html>
 <head>
   <title>Blog Listing</title>
@@ -89,11 +89,11 @@ func (wf *WebFace) MakeTemplates() {
 </body>
 </html>`)
 
-	if e != nil {
-		log.Fatalln(e)
+	if err != nil {
+		log.Fatalln(err)
 	}
 
-	EditTemplate, e = template.New("edit").Parse(`<!DOCTYPE html>
+	EditTemplate, err = template.New("edit").Parse(`<!DOCTYPE html>
 <html>
 <head>
   <title>Editing {{.Key}}</title>
@@ -121,25 +121,25 @@ func (wf *WebFace) MakeTemplates() {
 </body>
 </html>`)
 
-	if e != nil {
-		log.Fatalln(e)
+	if err != nil {
+		log.Fatalln(err)
 	}
 	//
 }
 
-var validBlogPath = regexp.MustCompile("^/admin/blog/([a-zA-Z0-9]+)/(edit|save|view)$")
+var validBlogPath = regexp.MustCompile("^/admin/blog/([a-zA-Z0-9\\-]+)/(edit|save|view)$")
 
 func (wf *WebFace) ServeBlogPage(w http.ResponseWriter, req *http.Request) {
 	m := validBlogPath.FindStringSubmatch(req.URL.Path)
 
 	// Get Page
-	b := GetBlogPostByKey(m[1])
+	b := myData.Feed.Get(m[1])
 
 	switch m[2] {
 	case "edit":
-		e := EditTemplate.ExecuteTemplate(w, "edit", b)
-		if e != nil {
-			log.Fatalln(e)
+		err := EditTemplate.ExecuteTemplate(w, "edit", b)
+		if err != nil {
+			log.Fatalln(err)
 		}
 
 	case "save":
@@ -151,12 +151,14 @@ func (wf *WebFace) ServeBlogPage(w http.ResponseWriter, req *http.Request) {
 			b.RawCategory = append(b.RawCategory, BlogCat(v))
 		}
 
+		// Set Pub Date
 		var year, month, day, hour, min int
-		fmt.Sscanf(req.FormValue("PubdateDate"), "%04d-%02d-%02d", year, month, day)
-		fmt.Sscanf(req.FormValue("PubdateTime"), "%02d:%02d", hour, min)
-		b.Date = time.Date(year, time.Month(month), day, hour, min, 0, 0, time.UTC)
-		b.Pubdate = b.Date.String()
+		fmt.Sscanf(req.FormValue("PubdateDate"), "%04d-%02d-%02d", &year, &month, &day)
+		fmt.Sscanf(req.FormValue("PubdateTime"), "%02d:%02d", &hour, &min)
+		log.Printf("%s \n %s \n %04d-%02d-%02d %02d:%02d", req.FormValue("PubdateDate"), req.FormValue("PubdateTime"), year, month, day, hour, min)
+		b.SetNewPubDate(time.Date(year, time.Month(month), day, hour, min, 0, 0, time.UTC))
 
+		// Setup Images
 		b.SmallImage = req.FormValue("SmallImage")
 		b.BannerImage = req.FormValue("BannerImage")
 		b.ShortDesc = req.FormValue("ShortDesc")
@@ -173,9 +175,9 @@ func (wf *WebFace) ServeBlogPage(w http.ResponseWriter, req *http.Request) {
 
 func (wf *WebFace) ServeBlogList(w http.ResponseWriter, req *http.Request) {
 
-	e := ListTemplate.ExecuteTemplate(w, "list", myData.Feed)
-	if e != nil {
-		log.Fatalln(e)
+	err := ListTemplate.ExecuteTemplate(w, "list", myData.Feed)
+	if err != nil {
+		log.Fatalln(err)
 	}
 }
 
