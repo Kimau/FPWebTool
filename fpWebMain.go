@@ -27,25 +27,47 @@ func genWebsite() {
 	GenerateSiteMap()
 }
 
+func scanForInput() chan string {
+	lines := make(chan string)
+
+	go func() {
+		scanner := bufio.NewScanner(os.Stdin)
+		scanner.Split(bufio.ScanLines)
+		for scanner.Scan() {
+			lines <- scanner.Text()
+		}
+	}()
+
+	return lines
+}
+
+func processCommand(line string) {
+	fmt.Println(line)
+	switch line[0] {
+	case 'x':
+		log.Fatalln("Exit")
+	case 'r':
+		genWebsite()
+	}
+
+}
+
 func main() {
 	log.Println(buildDate)
 
 	genWebsite()
 
-	go WebServeStaticFolder(":1667", ".")
+	wf := MakeWebFace(":1667", ".")
+	lines := scanForInput()
 
-	text := ""
 	for {
-		reader := bufio.NewReader(os.Stdin)
-		fmt.Print("Enter text: ")
-		text, _ = reader.ReadString('\n')
-		fmt.Println(text)
-
-		switch text[0] {
-		case 'x':
-			log.Fatalln("Exit")
-		case 'r':
-			genWebsite()
+		fmt.Print("Enter Command: ")
+		select {
+		case line := <-lines:
+			processCommand(line)
+		case m := <-wf.InMsg:
+			log.Println(m)
 		}
+
 	}
 }

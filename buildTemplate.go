@@ -349,6 +349,16 @@ func genHobbyPage() {
 	f.Close()
 }
 
+//
+func ListBlog() []string {
+	x := []string{}
+	for _, v := range myData.Feed {
+		x = append(x, v.Key)
+	}
+
+	return x
+}
+
 //////////////////////////////////
 func GenerateBlog() {
 	var e error
