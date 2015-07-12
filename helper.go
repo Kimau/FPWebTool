@@ -42,9 +42,11 @@ func CopyTree(src string, dest string, verbose bool) error {
 			if err != nil {
 				return err
 			}
-			defer destFile.Close()
 
 			_, err = io.CopyN(destFile, srcFile, info.Size())
+			destFile.Close()
+			os.Chtimes(myDest, info.ModTime(), info.ModTime())
+
 			if err != nil {
 				return err
 			}

@@ -53,24 +53,32 @@ func processCommand(line string) {
 	}
 }
 
-func copyFolderOver(folder string, destFolder string) {
+func copyFolderOver(folder string, destFolder string, c chan (int)) {
 	err := CopyTree("./"+folder, publicHtmlRoot+destFolder, false)
 
 	if err != nil {
 		log.Fatalln("Failed to copy %s because %s", folder, err)
 	}
 
-	log.Println("Copied %s to web root", folder)
+	log.Printf("Copied %s to web root\n", folder)
+	c <- 1
 }
 
 func main() {
 	log.Println(buildDate)
 
 	os.RemoveAll(publicHtmlRoot)
-	go copyFolderOver("/static_folder", "/")
-	go copyFolderOver("/images", "/images")
+	c1 := make(chan int)
+	c2 := make(chan int)
+	go copyFolderOver("/static_folder", "/", c1)
+	go copyFolderOver("/images", "/images", c2)
 
 	genWebsite()
+
+	// wait on gen
+	log.Println("----------------------------------------------\n Waiting on file copies...")
+	<-c1
+	<-c2
 
 	wf := MakeWebFace(":1667", publicHtmlRoot)
 	lines := scanForInput()
