@@ -10,6 +10,8 @@ import (
 
 var buildDate string
 
+const publicHtmlRoot = "./public_html/"
+
 func genWebsite() {
 	log.Println("Generating Blog ")
 	GenerateBlog()
@@ -49,15 +51,28 @@ func processCommand(line string) {
 	case 'r':
 		genWebsite()
 	}
+}
 
+func copyFolderOver(folder string, destFolder string) {
+	err := CopyTree("./"+folder, publicHtmlRoot+destFolder, false)
+
+	if err != nil {
+		log.Fatalln("Failed to copy %s because %s", folder, err)
+	}
+
+	log.Println("Copied %s to web root", folder)
 }
 
 func main() {
 	log.Println(buildDate)
 
+	os.RemoveAll(publicHtmlRoot)
+	go copyFolderOver("/static_folder", "/")
+	go copyFolderOver("/images", "/images")
+
 	genWebsite()
 
-	wf := MakeWebFace(":1667", ".")
+	wf := MakeWebFace(":1667", publicHtmlRoot)
 	lines := scanForInput()
 
 	for {

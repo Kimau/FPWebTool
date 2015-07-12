@@ -95,7 +95,7 @@ func (bl *BlogList) GenerateIndexPage() {
 		Content: template.HTML(outBuffer.String()),
 	}
 
-	f, fileErr := os.Create("./blog/index.html")
+	f, fileErr := os.Create(publicHtmlRoot + "blog/index.html")
 	if fileErr != nil {
 		log.Fatalln("Error in File ", fileErr)
 	}
@@ -155,11 +155,11 @@ func (bp *BlogPost) SetNewPubDate(newPubDate time.Time) {
 func (bp *BlogPost) GeneratePage() {
 	var err error
 
-	fileLoc := fmt.Sprintf("./blog/%04d/%02d/%s/", bp.Date.Year(), bp.Date.Month(), bp.Key)
+	bp.Link = fmt.Sprintf("blog/%04d/%02d/%s/", bp.Date.Year(), bp.Date.Month(), bp.Key)
 
-	log.Println(fileLoc)
+	log.Println(bp.Link)
 
-	err = os.MkdirAll(fileLoc, 0777)
+	err = os.MkdirAll(publicHtmlRoot+bp.Link, 0777)
 	if err != nil {
 		log.Fatalln("Error in Mkdir ", err)
 	}
@@ -202,7 +202,7 @@ func (bp *BlogPost) GeneratePage() {
 		Twitter:   tc,
 	}
 
-	f, fileErr := os.Create(fileLoc + "/index.html")
+	f, fileErr := os.Create(publicHtmlRoot + bp.Link + "index.html")
 	if fileErr != nil {
 		log.Fatalln("Error in File ", fileErr)
 	}
@@ -222,8 +222,8 @@ func (bp *BlogPost) GeneratePage() {
 func GenerateBlog() {
 	var err error
 
-	os.RemoveAll("./blog/")
-	err = os.MkdirAll("./blog/", 0777)
+	os.RemoveAll(publicHtmlRoot + "blog/")
+	err = os.MkdirAll(publicHtmlRoot+"blog/", 0777)
 	if err != nil {
 		log.Fatalln("Unable to make folder")
 	}
@@ -250,9 +250,12 @@ func GenerateBlog() {
 				v.Category = append(v.Category, c)
 			}
 		}
-		v.FixupDateFromPubStr()
-		v.LoadBodyFromFile()
-		v.GeneratePage()
+
+		go func(bp *BlogPost) {
+			bp.FixupDateFromPubStr()
+			bp.LoadBodyFromFile()
+			bp.GeneratePage()
+		}(v)
 
 	}
 	log.Println("Removed ", removedCat)
@@ -278,12 +281,12 @@ func GenerateBlogCatergoryPage(cat BlogCat, blist *BlogList) {
 		Content: template.HTML(outBuffer.String()),
 	}
 
-	err = os.MkdirAll("./blog/cat/"+cat.UrlVer(), 0777)
+	err = os.MkdirAll(publicHtmlRoot+"blog/cat/"+cat.UrlVer(), 0777)
 	if err != nil {
 		log.Fatalln("Error in Mkdir ", err)
 	}
 
-	f, fileErr := os.Create("./blog/cat/" + cat.UrlVer() + "/index.html")
+	f, fileErr := os.Create(publicHtmlRoot + "blog/cat/" + cat.UrlVer() + "/index.html")
 	if fileErr != nil {
 		log.Fatalln("Error in File ", fileErr)
 	}

@@ -161,7 +161,7 @@ func GenerateSiteMap() {
 		})
 	}
 
-	f, err := os.Create("sitemap.xml")
+	f, err := os.Create(publicHtmlRoot + "sitemap.xml")
 	if err != nil {
 		log.Fatalln("Error in Sitemap ", err)
 	}
@@ -203,8 +203,8 @@ func saveJSONBlob(filename string, jObj interface{}) {
 		log.Fatalln("Error in JSON ", err)
 	}
 
-	os.Remove(filename)
-	err = ioutil.WriteFile(filename, b, 0777)
+	os.Remove(publicHtmlRoot + filename)
+	err = ioutil.WriteFile(publicHtmlRoot+filename, b, 0777)
 	if err != nil {
 		log.Fatalln(err)
 		return
@@ -213,8 +213,8 @@ func saveJSONBlob(filename string, jObj interface{}) {
 }
 
 func GenerateJob() {
-	os.RemoveAll("./job/")
-	_ = os.MkdirAll("./job/", 0777)
+	os.RemoveAll(publicHtmlRoot + "job/")
+	_ = os.MkdirAll(publicHtmlRoot+"job/", 0777)
 
 	loadJSONBlob("Data/job.js", &myData.Job)
 	loadJSONBlob("Data/work.js", &myData.GameList)
@@ -272,7 +272,7 @@ func genJobPage() {
 		Content: template.HTML(outBuffer.String()),
 	}
 
-	f, fileErr := os.Create("./job/index.html")
+	f, fileErr := os.Create(publicHtmlRoot + "job/index.html")
 	if fileErr != nil {
 		log.Fatalln("Error in File ", fileErr)
 	}
@@ -282,8 +282,8 @@ func genJobPage() {
 }
 
 func GenerateHobby() {
-	os.RemoveAll("./hobby/")
-	_ = os.MkdirAll("./hobby/", 0777)
+	os.RemoveAll(publicHtmlRoot + "hobby/")
+	_ = os.MkdirAll(publicHtmlRoot+"hobby/", 0777)
 
 	loadJSONBlob("Data/hobby.js", &myData.Hobby)
 
@@ -311,7 +311,7 @@ func genHobbyPage() {
 		Content: template.HTML(outBuffer.String()),
 	}
 
-	f, fileErr := os.Create("./hobby/index.html")
+	f, fileErr := os.Create(publicHtmlRoot + "hobby/index.html")
 	if fileErr != nil {
 		log.Fatalln("Error in File ", fileErr)
 	}
@@ -328,7 +328,7 @@ func genHobbyPage() {
 func GenerateAbout() {
 	var err error
 
-	os.RemoveAll("./index.html")
+	os.RemoveAll(publicHtmlRoot + "index.html")
 	aboutIndexTemp, err := template.ParseFiles("Templates/about.html")
 	if err != nil {
 		log.Fatalln(err)
@@ -347,7 +347,7 @@ func GenerateAbout() {
 		Content: template.HTML(outBuffer.String()),
 	}
 
-	f, fileErr := os.Create("./index.html")
+	f, fileErr := os.Create(publicHtmlRoot + "index.html")
 	if fileErr != nil {
 		log.Fatalln("Error in File ", fileErr)
 	}

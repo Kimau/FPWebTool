@@ -19,7 +19,7 @@ type WebFace struct {
 	GlobalTemplateData map[string]string
 }
 
-func MakeWebFace(addr string, fileroot string) *WebFace {
+func MakeWebFace(addr string, hostfileroot string) *WebFace {
 	w := &WebFace{
 		Addr:   addr,
 		Router: http.NewServeMux(),
@@ -33,7 +33,7 @@ func MakeWebFace(addr string, fileroot string) *WebFace {
 
 	w.Router.HandleFunc("/admin/blog/list", w.ServeBlogList)
 	w.Router.HandleFunc("/admin/blog/", w.ServeBlogPage)
-	w.Router.Handle("/", http.FileServer(http.Dir(fileroot)))
+	w.Router.Handle("/", http.FileServer(http.Dir(hostfileroot)))
 
 	go w.HostLoop()
 
