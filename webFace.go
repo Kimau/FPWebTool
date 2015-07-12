@@ -164,6 +164,9 @@ func (wf *WebFace) ServeBlogPage(w http.ResponseWriter, req *http.Request) {
 		b.ShortDesc = req.FormValue("ShortDesc")
 		b.Body = template.HTML(req.FormValue("Body"))
 
+		myData.Feed.SaveToFile()
+		b.GeneratePage()
+
 		http.Redirect(w, req, "/admin/blog/"+m[1]+"/edit", 302)
 
 	case "view":

@@ -29,6 +29,32 @@ type BlogPost struct {
 	DateStr  string        `json:"-"`
 }
 
+var (
+	blogTemp, blogIndexTemp *template.Template
+)
+
+const longformPubStr = "Mon, 02 Jan 2006 15:04:05 -0700"
+
+////////////////////////////////////////////////////////////////////////////////
+//
+
+func init() {
+	var err error
+
+	blogIndexTemp, err = template.ParseFiles("Templates/blogindex.html")
+	if err != nil {
+		log.Fatalln(err)
+		return
+	}
+
+	blogTemp, err = template.ParseFiles("Templates/blogpost.html")
+	if err != nil {
+		log.Fatalln(err)
+		return
+	}
+
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // Blog Listing
 type BlogList []*BlogPost
@@ -37,8 +63,8 @@ func (bl BlogList) Len() int           { return len(bl) }
 func (bl BlogList) Swap(i, j int)      { bl[i], bl[j] = bl[j], bl[i] }
 func (bl BlogList) Less(i, j int) bool { return bl[i].Date.After(bl[j].Date) }
 
-func (bl BlogList) Get(key string) *BlogPost {
-	for _, v := range bl {
+func (bl *BlogList) Get(key string) *BlogPost {
+	for _, v := range *bl {
 		if v.Key == key {
 			return v
 		}
@@ -47,14 +73,18 @@ func (bl BlogList) Get(key string) *BlogPost {
 	return nil
 }
 
-func (bl BlogList) GenerateIndexPage() {
-	// Get Index Template
-	blogIndexTemp, err := template.ParseFiles("Templates/blogindex.html")
-	if err != nil {
-		log.Fatalln(err)
-		return
-	}
+func (bl *BlogList) LoadFromFile() {
+	loadJSONBlob("blogdata/blogData.js", bl)
+}
 
+func (bl *BlogList) SaveToFile() {
+	for _, v := range *bl {
+		v.SaveBodyToFile()
+	}
+	saveJSONBlob("blogdata/blogData.js", bl)
+}
+
+func (bl *BlogList) GenerateIndexPage() {
 	var outBuffer bytes.Buffer
 	blogIndexTemp.Execute(&outBuffer, bl)
 
@@ -70,7 +100,7 @@ func (bl BlogList) GenerateIndexPage() {
 		log.Fatalln("Error in File ", fileErr)
 	}
 
-	err = RootTemp.Execute(f, frameData)
+	err := RootTemp.Execute(f, frameData)
 	if err != nil {
 		log.Fatalln(err)
 		return
@@ -90,11 +120,25 @@ func (bp *BlogPost) LoadBodyFromFile() {
 	bp.Body = template.HTML(bodyBytes)
 }
 
+func (bp *BlogPost) SaveBodyToFile() {
+	if len(bp.Body) < 8 {
+		log.Fatalln("Body is null")
+		return
+	}
+
+	srcFile := fmt.Sprintf("blogdata/post/%s.html", bp.Key)
+
+	os.Remove(srcFile)
+	err := ioutil.WriteFile(srcFile, []byte(bp.Body), 0777)
+	if err != nil {
+		log.Fatalln(err)
+	}
+}
+
 func (bp *BlogPost) FixupDateFromPubStr() {
-	const longform = "Mon, 02 Jan 2006 15:04:05 -0700"
 	var err error
 
-	bp.Date, err = time.Parse(longform, bp.Pubdate)
+	bp.Date, err = time.Parse(longformPubStr, bp.Pubdate)
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -105,10 +149,10 @@ func (bp *BlogPost) FixupDateFromPubStr() {
 func (bp *BlogPost) SetNewPubDate(newPubDate time.Time) {
 	bp.Date = newPubDate
 	bp.DateStr = fmt.Sprintf("%d %v %d", bp.Date.Day(), bp.Date.Month(), bp.Date.Year())
-	bp.Pubdate = bp.Date.String()
+	bp.Pubdate = bp.Date.Format(longformPubStr)
 }
 
-func (bp *BlogPost) GeneratePage(blogTemp *template.Template) {
+func (bp *BlogPost) GeneratePage() {
 	var err error
 
 	fileLoc := fmt.Sprintf("./blog/%04d/%02d/%s/", bp.Date.Year(), bp.Date.Month(), bp.Key)
@@ -180,20 +224,11 @@ func GenerateBlog() {
 
 	os.RemoveAll("./blog/")
 	err = os.MkdirAll("./blog/", 0777)
+	if err != nil {
+		log.Fatalln("Unable to make folder")
+	}
 
 	loadJSONBlob("blogdata/blogData.js", &myData.Feed)
-
-	blogTemp, err := template.ParseFiles("Templates/blogpost.html")
-	if err != nil {
-		log.Fatalln(err)
-		return
-	}
-
-	blogCatTemp, err := template.ParseFiles("Templates/blogcat.html")
-	if err != nil {
-		log.Fatalln(err)
-		return
-	}
 
 	// Gather Catergories and filter out single use catergories
 	var catMap map[BlogCat]BlogList
@@ -217,7 +252,7 @@ func GenerateBlog() {
 		}
 		v.FixupDateFromPubStr()
 		v.LoadBodyFromFile()
-		v.GeneratePage(blogTemp)
+		v.GeneratePage()
 
 	}
 	log.Println("Removed ", removedCat)
@@ -226,17 +261,15 @@ func GenerateBlog() {
 	myData.Feed.GenerateIndexPage()
 
 	for k, v := range catMap {
-		GenerateBlogCatergoryPage(k, &v, blogCatTemp)
+		GenerateBlogCatergoryPage(k, &v)
 	}
-
-	// Save Out
-	saveJSONBlob("blogdata/blogData2.js", &myData.Feed)
 }
 
-func GenerateBlogCatergoryPage(cat BlogCat, blist *BlogList, blogCat *template.Template) {
+func GenerateBlogCatergoryPage(cat BlogCat, blist *BlogList) {
 	var err error
 	var outBuffer bytes.Buffer
-	blogCat.Execute(&outBuffer, blist)
+
+	blogIndexTemp.Execute(&outBuffer, blist)
 
 	// Write out Frame
 	frameData := &SubPage{
