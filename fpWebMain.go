@@ -53,7 +53,7 @@ func processCommand(line string, wf *WebFace) {
 	case "x":
 		log.Fatalln("Exit")
 	case "generate":
-		genWebsite()
+		Generate()
 		wf.GlobalTemplateData["isGenerating"] = "Done"
 	}
 }
