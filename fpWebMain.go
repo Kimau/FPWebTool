@@ -73,8 +73,8 @@ func Generate() {
 	os.RemoveAll(publicHtmlRoot)
 	c1 := make(chan int)
 	c2 := make(chan int)
-	go copyFolderOver("/static_folder", "/", c1)
-	go copyFolderOver("/images", "/images", c2)
+	go copyFolderOver("static_folder", "", c1)
+	go copyFolderOver("images", "images", c2)
 
 	genWebsite()
 
