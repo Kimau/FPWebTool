@@ -33,6 +33,8 @@ func MakeWebFace(addr string, hostfileroot string) *WebFace {
 
 	w.Router.HandleFunc("/admin/blog/list", w.ServeBlogList)
 	w.Router.HandleFunc("/admin/blog/", w.ServeBlogPage)
+	w.Router.HandleFunc("/admin/generate", w.ServeGenerate)
+	w.Router.HandleFunc("/admin/", w.ServeAdminPage)
 	w.Router.Handle("/", http.FileServer(http.Dir(hostfileroot)))
 
 	go w.HostLoop()
@@ -41,7 +43,7 @@ func MakeWebFace(addr string, hostfileroot string) *WebFace {
 }
 
 // TEMP HACK
-var EditTemplate, ListTemplate *template.Template
+var AdminTemplate, EditTemplate, ListTemplate *template.Template
 
 func (wf *WebFace) MakeTemplates() {
 	var err error
@@ -117,7 +119,25 @@ func (wf *WebFace) MakeTemplates() {
 
  </div>
 
-        <iframe width="48%" height="1600px" style="width:48%; display:inline-block;" src="{{.Link}}" frameborder="0" allowfullscreen></iframe>
+        <iframe width="48%" height="1600px" style="width:48%; display:inline-block;" src="/{{.Link}}" frameborder="0" allowfullscreen></iframe>
+</body>
+</html>`)
+
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	AdminTemplate, err = template.New("admin").Parse(`<!DOCTYPE html>
+<html>
+<head>
+  <title>Admin</title>
+</head>
+<body>
+ <div><a href="/admin/generate">Generate Webpage</a></div>
+ <div><a href="/admin/blog/list">Blog Listing</a></div>
+  {{range .}}
+ <div>{{.}}</div>
+ {{end}}
 </body>
 </html>`)
 
@@ -173,6 +193,20 @@ func (wf *WebFace) ServeBlogPage(w http.ResponseWriter, req *http.Request) {
 		fmt.Fprint(w, "Big TODO okay")
 	default:
 		fmt.Fprint(w, "WTF Chick!?")
+	}
+}
+
+func (wf *WebFace) ServeGenerate(w http.ResponseWriter, req *http.Request) {
+	wf.InMsg <- "generate"
+	wf.GlobalTemplateData["isGenerating"] = "generating"
+	http.Redirect(w, req, "/admin/", 302)
+}
+
+func (wf *WebFace) ServeAdminPage(w http.ResponseWriter, req *http.Request) {
+
+	err := AdminTemplate.ExecuteTemplate(w, "admin", wf.GlobalTemplateData)
+	if err != nil {
+		log.Fatalln(err)
 	}
 }
 

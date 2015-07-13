@@ -3,12 +3,16 @@ package main
 
 import (
 	"bufio"
+	"flag"
 	"fmt"
 	"log"
 	"os"
 )
 
-var buildDate string
+var (
+	buildDate   string
+	flagGenSite *bool
+)
 
 const publicHtmlRoot = "./public_html/"
 
@@ -43,13 +47,14 @@ func scanForInput() chan string {
 	return lines
 }
 
-func processCommand(line string) {
+func processCommand(line string, wf *WebFace) {
 	fmt.Println(line)
-	switch line[0] {
-	case 'x':
+	switch line {
+	case "x":
 		log.Fatalln("Exit")
-	case 'r':
+	case "generate":
 		genWebsite()
+		wf.GlobalTemplateData["isGenerating"] = "Done"
 	}
 }
 
@@ -64,9 +69,7 @@ func copyFolderOver(folder string, destFolder string, c chan (int)) {
 	c <- 1
 }
 
-func main() {
-	log.Println(buildDate)
-
+func Generate() {
 	os.RemoveAll(publicHtmlRoot)
 	c1 := make(chan int)
 	c2 := make(chan int)
@@ -79,6 +82,17 @@ func main() {
 	log.Println("----------------------------------------------\n Waiting on file copies...")
 	<-c1
 	<-c2
+}
+
+func main() {
+	flagGenSite = flag.Bool("gen", false, "Should Website be generated")
+	flag.Parse()
+
+	log.Println(buildDate)
+
+	if *flagGenSite {
+		Generate()
+	}
 
 	wf := MakeWebFace(":1667", publicHtmlRoot)
 	lines := scanForInput()
@@ -87,9 +101,9 @@ func main() {
 		fmt.Println("Enter Command: ")
 		select {
 		case line := <-lines:
-			processCommand(line)
+			processCommand(line, wf)
 		case m := <-wf.InMsg:
-			log.Println(m)
+			processCommand(m, wf)
 		}
 
 	}

@@ -7,12 +7,12 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"regexp"
 	"sort"
 	"time"
 )
 
 type BlogCat string
-
 type BlogPost struct {
 	Key         string    `json:"key"`
 	Title       string    `json:"title"`
@@ -31,6 +31,11 @@ type BlogPost struct {
 
 var (
 	blogTemp, blogIndexTemp *template.Template
+
+	regUrlChar     *regexp.Regexp
+	regUrlSpace    *regexp.Regexp
+	regStripMarkup *regexp.Regexp
+	regCatchImage  *regexp.Regexp
 )
 
 const longformPubStr = "Mon, 02 Jan 2006 15:04:05 -0700"
@@ -40,6 +45,11 @@ const longformPubStr = "Mon, 02 Jan 2006 15:04:05 -0700"
 
 func init() {
 	var err error
+
+	regUrlChar = regexp.MustCompile("[^A-Za-z]")
+	regUrlSpace = regexp.MustCompile(" ")
+	regStripMarkup = regexp.MustCompile("<[^<>]*>")
+	regCatchImage = regexp.MustCompile("<img[^>]*\"(/images/Blog[^\"]*)\"[^>]*>")
 
 	blogIndexTemp, err = template.ParseFiles("Templates/blogindex.html")
 	if err != nil {
@@ -53,6 +63,12 @@ func init() {
 		return
 	}
 
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Blog Cat
+func (c BlogCat) UrlVer() string {
+	return regUrlSpace.ReplaceAllString(regUrlChar.ReplaceAllString(string(c), ""), "_")
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -84,7 +100,7 @@ func (bl *BlogList) SaveToFile() {
 	saveJSONBlob("blogdata/blogData.js", bl)
 }
 
-func (bl *BlogList) GenerateIndexPage() {
+func (bl *BlogList) GeneratePage() {
 	var outBuffer bytes.Buffer
 	blogIndexTemp.Execute(&outBuffer, bl)
 
@@ -144,18 +160,18 @@ func (bp *BlogPost) FixupDateFromPubStr() {
 	}
 
 	bp.DateStr = fmt.Sprintf("%d %v %d", bp.Date.Day(), bp.Date.Month(), bp.Date.Year())
+	bp.Link = fmt.Sprintf("blog/%04d/%02d/%s/", bp.Date.Year(), bp.Date.Month(), bp.Key)
 }
 
 func (bp *BlogPost) SetNewPubDate(newPubDate time.Time) {
 	bp.Date = newPubDate
 	bp.DateStr = fmt.Sprintf("%d %v %d", bp.Date.Day(), bp.Date.Month(), bp.Date.Year())
+	bp.Link = fmt.Sprintf("blog/%04d/%02d/%s/", bp.Date.Year(), bp.Date.Month(), bp.Key)
 	bp.Pubdate = bp.Date.Format(longformPubStr)
 }
 
 func (bp *BlogPost) GeneratePage() {
 	var err error
-
-	bp.Link = fmt.Sprintf("blog/%04d/%02d/%s/", bp.Date.Year(), bp.Date.Month(), bp.Key)
 
 	log.Println(bp.Link)
 
@@ -228,7 +244,7 @@ func GenerateBlog() {
 		log.Fatalln("Unable to make folder")
 	}
 
-	loadJSONBlob("blogdata/blogData.js", &myData.Feed)
+	myData.Feed.LoadFromFile()
 
 	// Gather Catergories and filter out single use catergories
 	var catMap map[BlogCat]BlogList
@@ -251,8 +267,9 @@ func GenerateBlog() {
 			}
 		}
 
+		v.FixupDateFromPubStr()
+
 		go func(bp *BlogPost) {
-			bp.FixupDateFromPubStr()
 			bp.LoadBodyFromFile()
 			bp.GeneratePage()
 		}(v)
@@ -261,7 +278,7 @@ func GenerateBlog() {
 	log.Println("Removed ", removedCat)
 
 	sort.Sort(myData.Feed)
-	myData.Feed.GenerateIndexPage()
+	myData.Feed.GeneratePage()
 
 	for k, v := range catMap {
 		GenerateBlogCatergoryPage(k, &v)
