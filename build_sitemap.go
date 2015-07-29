@@ -58,8 +58,7 @@ func GenerateSiteMap() {
 		}
 		f.Write(s)
 	}
-	f.WriteString(`
-  </urlset><!--END-->`)
+	f.WriteString(`</urlset><!--END-->`)
 
 	f.Close()
 }

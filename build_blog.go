@@ -9,6 +9,7 @@ import (
 	"os"
 	"regexp"
 	"sort"
+	"sync"
 	"time"
 )
 
@@ -237,6 +238,7 @@ func (bp *BlogPost) GeneratePage() {
 // Entry Point
 func GenerateBlog() {
 	var err error
+	var wg sync.WaitGroup
 
 	os.RemoveAll(publicHtmlRoot + "blog/")
 	err = os.MkdirAll(publicHtmlRoot+"blog/", 0777)
@@ -268,12 +270,12 @@ func GenerateBlog() {
 		}
 
 		v.FixupDateFromPubStr()
-
+		wg.Add(1)
 		go func(bp *BlogPost) {
+			defer wg.Done()
 			bp.LoadBodyFromFile()
 			bp.GeneratePage()
 		}(v)
-
 	}
 	log.Println("Removed ", removedCat)
 
@@ -283,6 +285,8 @@ func GenerateBlog() {
 	for k, v := range catMap {
 		GenerateBlogCatergoryPage(k, &v)
 	}
+
+	wg.Wait()
 }
 
 func GenerateBlogCatergoryPage(cat BlogCat, blist *BlogList) {
