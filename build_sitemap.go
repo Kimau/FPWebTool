@@ -59,7 +59,7 @@ func GenerateSiteMap() {
 		f.Write(s)
 	}
 	f.WriteString(`
-  </urlset>`)
+  </urlset><!--END-->`)
 
 	f.Close()
 }
