@@ -140,7 +140,7 @@ func GenerateAbout() {
 	// Write out Frame
 	frameData := &SubPage{
 		Title:   "Claire Blackshaw",
-		FullURL: "http://www.flammablepenguins.com/",
+		FullURL: "http://www.claire-blackshaw.com/",
 		Content: template.HTML(outBuffer.String()),
 	}
 

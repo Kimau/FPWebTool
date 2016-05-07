@@ -87,7 +87,7 @@ func (jo *JobList) GeneratePage() {
 	// Write out Frame
 	frameData := &SubPage{
 		Title:   "Games Career",
-		FullURL: "http://www.flammablepenguins.com/job/",
+		FullURL: "http://www.claire-blackshaw.com/job/",
 		Content: template.HTML(outBuffer.String()),
 	}
 

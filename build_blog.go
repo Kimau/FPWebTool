@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"html/template"
 	"io/ioutil"
@@ -23,6 +24,10 @@ type BlogPost struct {
 	BannerImage string    `json:"bannerImage,omitempty"`
 	ShortDesc   string    `json:"desc,omitempty"`
 	RawCategory []BlogCat `json:"category"`
+
+	Image       string `json:"image,omitempty"`
+	ImageWidth  string `json:"imageWidth,omitempty"`
+	ImageHeight string `json:"imageHeight,omitempty"`
 
 	Category []BlogCat     `json:"-"`
 	Date     time.Time     `json:"-"`
@@ -108,7 +113,7 @@ func (bl *BlogList) GeneratePage() {
 	// Write out Frame
 	frameData := &SubPage{
 		Title:   "Blog",
-		FullURL: "http://www.flammablepenguins.com/blog/",
+		FullURL: "http://www.claire-blackshaw.com/blog/",
 		Content: template.HTML(outBuffer.String()),
 	}
 
@@ -141,8 +146,7 @@ func (bp *BlogPost) LoadBodyFromFile() error {
 
 func (bp *BlogPost) SaveBodyToFile() error {
 	if len(bp.Body) < 8 {
-		log.Fatalln("Body is null")
-		return error.Error()
+		return errors.New("Body is null or less than 8 characters")
 	}
 
 	// Make Folder
@@ -159,6 +163,8 @@ func (bp *BlogPost) SaveBodyToFile() error {
 	if err != nil {
 		log.Fatalln(err)
 	}
+
+	return nil
 }
 
 func (bp *BlogPost) FixupDateFromPubStr() {
@@ -190,6 +196,24 @@ func (bp *BlogPost) GeneratePage() {
 		log.Fatalln("Error in Mkdir ", err)
 	}
 
+	// Get Banner Image Size (if I have one)
+	if len(bp.BannerImage) > 3 {
+		w, h, e := getImageDimension("." + bp.BannerImage)
+		if e != nil {
+			log.Fatalln("Error getting Banner:", bp.Title, "\n>", bp.BannerImage, "\n>", e)
+		}
+
+		bp.Image = bp.BannerImage
+		bp.ImageWidth = fmt.Sprintf("%d", w)
+		bp.ImageHeight = fmt.Sprintf("%d", h)
+	} else if len(bp.SmallImage) > 3 {
+		bp.Image = bp.SmallImage
+		bp.ImageWidth, bp.ImageHeight = "120", "120"
+	} else {
+		bp.Image = "/images/fp_twitter_tiny.png"
+		bp.ImageWidth, bp.ImageHeight = "120", "120"
+	}
+
 	var outBuffer bytes.Buffer
 	blogTemp.Execute(&outBuffer, bp)
 
@@ -209,20 +233,20 @@ func (bp *BlogPost) GeneratePage() {
 		Site:        "@EvilKimau",
 		Title:       bp.Title,
 		Description: bp.ShortDesc,
-		Image:       "http://www.flammablepenguins.com/images/fp_twitter_tiny.png",
+		Image:       "http://www.claire-blackshaw.com/images/fp_twitter_tiny.png",
 	}
 
 	if len(bp.BannerImage) > 3 {
 		tc.Card = "summary_large_image"
-		tc.Image = "http://www.flammablepenguins.com" + bp.BannerImage
+		tc.Image = "http://www.claire-blackshaw.com" + bp.BannerImage
 	} else if len(bp.SmallImage) > 3 {
-		tc.Image = "http://www.flammablepenguins.com" + bp.SmallImage
+		tc.Image = "http://www.claire-blackshaw.com" + bp.SmallImage
 	}
 
 	// Write out Frame
 	frameData := &SubPage{
 		Title:     bp.Title,
-		FullURL:   "http://www.flammablepenguins.com" + bp.Link,
+		FullURL:   "http://www.claire-blackshaw.com" + bp.Link,
 		ShortDesc: bp.ShortDesc,
 		Content:   template.HTML(outBuffer.String()),
 		Twitter:   tc,
@@ -313,7 +337,7 @@ func GenerateBlogCatergoryPage(cat BlogCat, blist *BlogList) {
 	// Write out Frame
 	frameData := &SubPage{
 		Title:   "Blog - " + string(cat),
-		FullURL: "http://www.flammablepenguins.com/blog/cat/" + cat.UrlVer() + "/",
+		FullURL: "http://www.claire-blackshaw.com/blog/cat/" + cat.UrlVer() + "/",
 		Content: template.HTML(outBuffer.String()),
 	}
 

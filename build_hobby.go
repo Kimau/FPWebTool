@@ -52,7 +52,7 @@ func (hl *HobbyList) GeneratePage() {
 	// Write out Frame
 	frameData := &SubPage{
 		Title:   "Hobby",
-		FullURL: "http://www.flammablepenguins.com/hobby/",
+		FullURL: "http://www.claire-blackshaw.com/hobby/",
 		Content: template.HTML(outBuffer.String()),
 	}
 
