@@ -128,25 +128,34 @@ func (bl *BlogList) GeneratePage() {
 
 ////////////////////////////////////////////////////////////////////////////////
 // Blog Post
-func (bp *BlogPost) LoadBodyFromFile() {
-	srcFile := fmt.Sprintf("blogdata/post/%s.html", bp.Key)
+func (bp *BlogPost) LoadBodyFromFile() error {
+	srcFile := fmt.Sprintf("blogdata/post/%d/%s.html", bp.Date.Year(), bp.Key)
 	bodyBytes, err := ioutil.ReadFile(srcFile)
 	if err != nil {
-		log.Fatalln(err)
+		return err
 	}
+
 	bp.Body = template.HTML(bodyBytes)
+	return nil
 }
 
-func (bp *BlogPost) SaveBodyToFile() {
+func (bp *BlogPost) SaveBodyToFile() error {
 	if len(bp.Body) < 8 {
 		log.Fatalln("Body is null")
-		return
+		return error.Error()
 	}
 
-	srcFile := fmt.Sprintf("blogdata/post/%s.html", bp.Key)
+	// Make Folder
+	destFolder := fmt.Sprintf("blogdata/post/%d", bp.Date.Year())
+	err := os.MkdirAll(destFolder, 077)
+	if err != nil {
+		return err
+	}
+
+	srcFile := fmt.Sprintf("blogdata/post/%d/%s.html", bp.Date.Year(), bp.Key)
 
 	os.Remove(srcFile)
-	err := ioutil.WriteFile(srcFile, []byte(bp.Body), 0777)
+	err = ioutil.WriteFile(srcFile, []byte(bp.Body), 0777)
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -273,8 +282,14 @@ func GenerateBlog() {
 		wg.Add(1)
 		go func(bp *BlogPost) {
 			defer wg.Done()
-			bp.LoadBodyFromFile()
+			err := bp.LoadBodyFromFile()
+			if err != nil {
+				log.Fatalln(err)
+				return
+			}
+
 			bp.GeneratePage()
+
 		}(v)
 	}
 	log.Println("Removed ", removedCat)
