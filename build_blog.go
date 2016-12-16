@@ -176,13 +176,13 @@ func (bp *BlogPost) FixupDateFromPubStr() {
 	}
 
 	bp.DateStr = fmt.Sprintf("%d %v %d", bp.Date.Day(), bp.Date.Month(), bp.Date.Year())
-	bp.Link = fmt.Sprintf("blog/%04d/%02d/%s/", bp.Date.Year(), bp.Date.Month(), bp.Key)
+	bp.Link = fmt.Sprintf("/blog/%04d/%02d/%s/", bp.Date.Year(), bp.Date.Month(), bp.Key)
 }
 
 func (bp *BlogPost) SetNewPubDate(newPubDate time.Time) {
 	bp.Date = newPubDate
 	bp.DateStr = fmt.Sprintf("%d %v %d", bp.Date.Day(), bp.Date.Month(), bp.Date.Year())
-	bp.Link = fmt.Sprintf("blog/%04d/%02d/%s/", bp.Date.Year(), bp.Date.Month(), bp.Key)
+	bp.Link = fmt.Sprintf("/blog/%04d/%02d/%s/", bp.Date.Year(), bp.Date.Month(), bp.Key)
 	bp.Pubdate = bp.Date.Format(longformPubStr)
 }
 
@@ -276,7 +276,7 @@ func GenerateBlog() {
 	os.RemoveAll(publicHtmlRoot + "blog/")
 	err = os.MkdirAll(publicHtmlRoot+"blog/", 0777)
 	if err != nil {
-		log.Fatalln("Unable to make folder")
+		log.Fatalln("Unable to make folder", err)
 	}
 
 	myData.Feed.LoadFromFile()

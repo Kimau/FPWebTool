@@ -36,7 +36,7 @@ func GenerateSiteMap() {
 
 	for _, v := range myData.Feed {
 		siteLinks = append(siteLinks, SiteMapLink{
-			Loc:        "http://www.claire-blackshaw.com/" + v.Link,
+			Loc:        "http://www.claire-blackshaw.com" + v.Link,
 			LastMod:    v.Date,
 			Changefreq: "monthly",
 			Priority:   0.5,
