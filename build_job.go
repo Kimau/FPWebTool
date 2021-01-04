@@ -16,7 +16,7 @@ type JobObject struct {
 	End     string   `json:"end"`
 	Body    string   `json:"body"`
 	Games   GameList `json:"games"`
-	Date    time.Time
+	Date    time.Time `json:"date"`
 }
 
 type GameProject struct {
@@ -31,7 +31,7 @@ type GameProject struct {
 	Platform  []string `json:"platform"`
 	Images    []string `json:"images"`
 	Body      []string `json:"body"`
-	Date      time.Time
+	Date      time.Time `json:"date"`
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -40,20 +40,6 @@ const (
 	joblongform  = "2006 January"
 	gamelongform = "02 January 2006"
 )
-
-var (
-	jobIndexTemp *template.Template
-)
-
-func init() {
-	var err error
-
-	jobIndexTemp, err = template.ParseFiles("Templates/job.html")
-	if err != nil {
-		log.Fatalln(err)
-		return
-	}
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 // Job List
@@ -66,12 +52,7 @@ func (jo JobList) Less(i, j int) bool { return jo[i].Date.After(jo[j].Date) }
 func (jo *JobList) LoadFromFile() {
 	loadJSONBlob("Data/job.js", jo)
 
-	for _, j := range myData.Job {
-		j.Date, _ = time.Parse(joblongform, j.Start)
-		for _, g := range j.Games {
-			g.Date, _ = time.Parse(gamelongform, g.Released)
-		}
-
+	for _, j := range genData.Job {
 		sort.Sort(j.Games)
 	}
 
@@ -79,15 +60,19 @@ func (jo *JobList) LoadFromFile() {
 }
 
 func (jo *JobList) GeneratePage() {
-	var err error
+	jobIndexTemp, err := template.ParseFiles("Templates/job.html")
+	if err != nil {
+		log.Fatalln(err)
+		return
+	}
 
 	var outBuffer bytes.Buffer
-	jobIndexTemp.Execute(&outBuffer, jo)
+	jobIndexTemp.Execute(&outBuffer, genData)
 
 	// Write out Frame
 	frameData := &SubPage{
 		Title:   "Games Career",
-		FullURL: "http://www.claire-blackshaw.com/job/",
+		FullURL: "/job/",
 		Content: template.HTML(outBuffer.String()),
 	}
 
@@ -123,7 +108,5 @@ func GenerateJob() {
 	os.RemoveAll(publicHtmlRoot + "job/")
 	_ = os.MkdirAll(publicHtmlRoot+"job/", 0777)
 
-	myData.Job.LoadFromFile()
-
-	myData.Job.GeneratePage()
+	genData.Job.GeneratePage()
 }

@@ -15,6 +15,8 @@ type HobbyProject struct {
 	BodyList []string  `json:"desc"`
 	Images   []string  `json:"images"`
 	Tags     []string  `json:"tags"`
+	Active bool `json:"active"`
+	Recent bool `json:"recent"`
 }
 
 var (
@@ -24,7 +26,7 @@ var (
 func init() {
 	var err error
 
-	hobbyIndexTemp, err = template.ParseFiles("Templates/hobby.html")
+	hobbyIndexTemp, err = template.ParseFiles("Templates/projects.html")
 	if err != nil {
 		log.Fatalln(err)
 		return
@@ -37,6 +39,13 @@ type HobbyList []*HobbyProject
 
 func (hl *HobbyList) LoadFromFile() {
 	loadJSONBlob("Data/hobby.js", hl)
+
+	for _,v := range *hl {
+		for _,t := range v.Tags {
+			if(t == "active") { v.Active = true }
+			if(t == "recent") { v.Recent = true }
+		}
+	}
 }
 
 func (hl *HobbyList) GeneratePage() {
@@ -52,11 +61,13 @@ func (hl *HobbyList) GeneratePage() {
 	// Write out Frame
 	frameData := &SubPage{
 		Title:   "Hobby",
-		FullURL: "http://www.claire-blackshaw.com/hobby/",
+		FullURL: "/hobby/",
 		Content: template.HTML(outBuffer.String()),
 	}
 
-	f, fileErr := os.Create(publicHtmlRoot + "hobby/index.html")
+	os.MkdirAll(publicHtmlRoot + "projects/", 0777)
+
+	f, fileErr := os.Create(publicHtmlRoot + "projects/index.html")
 	if fileErr != nil {
 		log.Fatalln("Error in File ", fileErr)
 	}
@@ -76,6 +87,5 @@ func GenerateHobby() {
 	os.RemoveAll(publicHtmlRoot + "hobby/")
 	_ = os.MkdirAll(publicHtmlRoot+"hobby/", 0777)
 
-	myData.Hobby.LoadFromFile()
-	myData.Hobby.GeneratePage()
+	genData.Hobby.GeneratePage()
 }

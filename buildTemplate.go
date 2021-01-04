@@ -30,7 +30,7 @@ type TwitterCard struct {
 	Image       string
 }
 
-type AboutMe struct {
+type GenerateData struct { // Loaded from files and Generated
 	Feed      BlogList
 	Hobby     HobbyList
 	Job       JobList
@@ -44,29 +44,10 @@ type TemplateRoot struct {
 }
 
 var (
-	myData   *AboutMe
+	genData   *GenerateData
 	RootTemp *template.Template
 )
 
-func init() {
-
-	myData = &AboutMe{
-		Feed:  BlogList{},
-		Hobby: HobbyList{},
-		Job:   JobList{},
-	}
-
-	myData.Feed.LoadFromFile()
-	myData.Hobby.LoadFromFile()
-	myData.Hobby.LoadFromFile()
-
-	var err error
-	RootTemp, err = template.ParseFiles("Templates/root.html")
-	if err != nil {
-		log.Fatalln(err)
-		return
-	}
-}
 
 func loadJSONBlob(filename string, jObj interface{}) {
 	log.Println("Loading ", filename)
@@ -100,8 +81,6 @@ func saveJSONBlob(filename string, jObj interface{}) {
 ////////////////////////////////////////////////////////////////////////////////
 // Generate About
 func GenerateAbout() {
-	var err error
-
 	os.RemoveAll(publicHtmlRoot + "index.html")
 	aboutIndexTemp, err := template.ParseFiles("Templates/about.html")
 	if err != nil {
@@ -109,38 +88,15 @@ func GenerateAbout() {
 		return
 	}
 
-	// Build Short Feed
-	myData.ShortFeed = myData.Feed[0:10]
-
-	// Build Game List
-	myData.GameList = BuildFromJobs(&myData.Job)
-
-	// Build Platform List
-
-	platformMap := make(map[string]int)
-	for _, g := range myData.GameList {
-		for _, p := range g.Platform {
-			platformMap[p] = platformMap[p]
-		}
-	}
-
-	myData.Platforms = make([]string, len(platformMap))
-
-	i := 0
-	for k := range platformMap {
-		myData.Platforms[i] = k
-		i += 1
-	}
-
 	// Run Template
 
 	var outBuffer bytes.Buffer
-	aboutIndexTemp.Execute(&outBuffer, myData)
+	aboutIndexTemp.Execute(&outBuffer, genData)
 
 	// Write out Frame
 	frameData := &SubPage{
 		Title:   "Claire Blackshaw",
-		FullURL: "http://www.claire-blackshaw.com/",
+		FullURL: "/",
 		Content: template.HTML(outBuffer.String()),
 	}
 
@@ -156,4 +112,61 @@ func GenerateAbout() {
 	}
 
 	f.Close()
+}
+
+func generateDataOnly() {
+	genData = &GenerateData{
+		Feed:  BlogList{},
+		Hobby: HobbyList{},
+		Job:   JobList{},
+	}
+
+	genData.Job.LoadFromFile()
+	genData.Feed.LoadFromFile()
+	genData.Hobby.LoadFromFile()
+
+	// Build Short Feed
+	genData.ShortFeed = genData.Feed[0:5]
+
+	// Build Game List
+	genData.GameList = BuildFromJobs(&genData.Job)
+
+	// Build Platform List
+	platformMap := make(map[string]int)
+	genData.Platforms = []string{}
+	for _, g := range genData.GameList {
+		for _, p := range g.Platform {
+			_, ok := platformMap[p]
+			if(!ok) {
+				platformMap[p] = 1
+				genData.Platforms = append(genData.Platforms, p)
+			}
+		}
+	}
+}
+
+func genWebsite() {
+	generateDataOnly()
+
+	var err error
+	RootTemp, err = template.ParseFiles("Templates/root.html")
+	if err != nil {
+		log.Fatalln(err)
+		return
+	}
+
+	log.Println("Generating Blog ")
+	GenerateBlog()
+
+	log.Println("Generating Hobby ")
+	GenerateHobby()
+
+	log.Println("Generating Job ")
+	GenerateJob()
+
+	log.Println("Generating About ")
+	GenerateAbout()
+
+	log.Println("Generating Sitemap ")
+	GenerateSiteMap()
 }

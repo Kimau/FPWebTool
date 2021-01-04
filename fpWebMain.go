@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 )
 
 var (
@@ -16,22 +17,6 @@ var (
 
 const publicHtmlRoot = "./public_html/"
 
-func genWebsite() {
-	log.Println("Generating Blog ")
-	GenerateBlog()
-
-	log.Println("Generating Hobby ")
-	GenerateHobby()
-
-	log.Println("Generating Job ")
-	GenerateJob()
-
-	log.Println("Generating About ")
-	GenerateAbout()
-
-	log.Println("Generating Sitemap ")
-	GenerateSiteMap()
-}
 
 func scanForInput() chan string {
 	lines := make(chan string)
@@ -48,13 +33,16 @@ func scanForInput() chan string {
 }
 
 func processCommand(line string, wf *WebFace) {
-	fmt.Println(line)
+	// fmt.Println(line)
+
 	switch line {
-	case "x":
+	case "x","exit":
 		log.Fatalln("Exit")
-	case "generate":
+	case "g", "generate":
 		Generate()
 		wf.GlobalTemplateData["isGenerating"] = "Done"
+	default:
+		fmt.Println("Commands: " + strings.Join([]string{"g","generate","x","exit"}, " "))
 	}
 }
 
@@ -92,6 +80,8 @@ func main() {
 
 	if *flagGenSite {
 		Generate()
+	} else {
+		generateDataOnly() // only
 	}
 
 	wf := MakeWebFace(":1667", publicHtmlRoot)

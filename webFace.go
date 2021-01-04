@@ -153,7 +153,7 @@ func (wf *WebFace) ServeBlogPage(w http.ResponseWriter, req *http.Request) {
 	m := validBlogPath.FindStringSubmatch(req.URL.Path)
 
 	// Get Page
-	b := myData.Feed.Get(m[1])
+	b := genData.Feed.Get(m[1])
 
 	switch m[2] {
 	case "edit":
@@ -184,7 +184,7 @@ func (wf *WebFace) ServeBlogPage(w http.ResponseWriter, req *http.Request) {
 		b.ShortDesc = req.FormValue("ShortDesc")
 		b.Body = template.HTML(req.FormValue("Body"))
 
-		myData.Feed.SaveToFile()
+		genData.Feed.SaveToFile()
 		b.GeneratePage()
 
 		http.Redirect(w, req, "/admin/blog/"+m[1]+"/edit", 302)
@@ -212,7 +212,7 @@ func (wf *WebFace) ServeAdminPage(w http.ResponseWriter, req *http.Request) {
 
 func (wf *WebFace) ServeBlogList(w http.ResponseWriter, req *http.Request) {
 
-	err := ListTemplate.ExecuteTemplate(w, "list", myData.Feed)
+	err := ListTemplate.ExecuteTemplate(w, "list", genData.Feed)
 	if err != nil {
 		log.Fatalln(err)
 	}

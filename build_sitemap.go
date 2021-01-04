@@ -21,22 +21,22 @@ func GenerateSiteMap() {
 	var siteLinks []SiteMapLink
 
 	siteLinks = append(siteLinks, SiteMapLink{
-		Loc:        "http://www.claire-blackshaw.com/",
+		Loc:        "/",
 		LastMod:    time.Now(),
 		Changefreq: "daily",
 		Priority:   1.0,
 	})
 
 	siteLinks = append(siteLinks, SiteMapLink{
-		Loc:        "http://www.claire-blackshaw.com/blog/",
+		Loc:        "/blog/",
 		LastMod:    time.Now(),
 		Changefreq: "daily",
 		Priority:   1.0,
 	})
 
-	for _, v := range myData.Feed {
+	for _, v := range genData.Feed {
 		siteLinks = append(siteLinks, SiteMapLink{
-			Loc:        "http://www.claire-blackshaw.com" + v.Link,
+			Loc:       v.Link,
 			LastMod:    v.Date,
 			Changefreq: "monthly",
 			Priority:   0.5,

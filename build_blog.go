@@ -113,7 +113,7 @@ func (bl *BlogList) GeneratePage() {
 	// Write out Frame
 	frameData := &SubPage{
 		Title:   "Blog",
-		FullURL: "http://www.claire-blackshaw.com/blog/",
+		FullURL: "/blog/",
 		Content: template.HTML(outBuffer.String()),
 	}
 
@@ -215,7 +215,11 @@ func (bp *BlogPost) GeneratePage() {
 	}
 
 	var outBuffer bytes.Buffer
-	blogTemp.Execute(&outBuffer, bp)
+	err = blogTemp.Execute(&outBuffer, bp)
+	if err != nil {
+		log.Fatalln(err)
+		return
+	}
 
 	// Twitter Card
 	if len(bp.ShortDesc) < 4 {
@@ -233,20 +237,20 @@ func (bp *BlogPost) GeneratePage() {
 		Site:        "@EvilKimau",
 		Title:       bp.Title,
 		Description: bp.ShortDesc,
-		Image:       "http://www.claire-blackshaw.com/images/fp_twitter_tiny.png",
+		Image:       "/images/fp_twitter_tiny.png",
 	}
 
 	if len(bp.BannerImage) > 3 {
 		tc.Card = "summary_large_image"
-		tc.Image = "http://www.claire-blackshaw.com" + bp.BannerImage
+		tc.Image = bp.BannerImage
 	} else if len(bp.SmallImage) > 3 {
-		tc.Image = "http://www.claire-blackshaw.com" + bp.SmallImage
+		tc.Image = bp.SmallImage
 	}
 
 	// Write out Frame
 	frameData := &SubPage{
 		Title:     bp.Title,
-		FullURL:   "http://www.claire-blackshaw.com" + bp.Link,
+		FullURL:   bp.Link,
 		ShortDesc: bp.ShortDesc,
 		Content:   template.HTML(outBuffer.String()),
 		Twitter:   tc,
@@ -279,19 +283,17 @@ func GenerateBlog() {
 		log.Fatalln("Unable to make folder", err)
 	}
 
-	myData.Feed.LoadFromFile()
-
 	// Gather Catergories and filter out single use catergories
 	var catMap map[BlogCat]BlogList
 	catMap = make(map[BlogCat]BlogList)
-	for _, v := range myData.Feed {
+	for _, v := range genData.Feed {
 		for _, c := range v.RawCategory {
 			catMap[c] = append(catMap[c], v)
 		}
 	}
 
 	removedCat := []BlogCat{}
-	for _, v := range myData.Feed {
+	for _, v := range genData.Feed {
 		v.Category = []BlogCat{}
 		for _, c := range v.RawCategory {
 			if len(catMap[c]) < 2 {
@@ -303,7 +305,7 @@ func GenerateBlog() {
 		}
 
 		v.FixupDateFromPubStr()
-		wg.Add(1)
+		/*wg.Add(1)
 		go func(bp *BlogPost) {
 			defer wg.Done()
 			err := bp.LoadBodyFromFile()
@@ -314,12 +316,19 @@ func GenerateBlog() {
 
 			bp.GeneratePage()
 
-		}(v)
+		}(v)*/
+		err := v.LoadBodyFromFile()
+		if err != nil {
+			log.Fatalln(err)
+			return
+		}
+			
+		v.GeneratePage()
 	}
 	log.Println("Removed ", removedCat)
 
-	sort.Sort(myData.Feed)
-	myData.Feed.GeneratePage()
+	sort.Sort(genData.Feed)
+	genData.Feed.GeneratePage()
 
 	for k, v := range catMap {
 		GenerateBlogCatergoryPage(k, &v)
@@ -337,7 +346,7 @@ func GenerateBlogCatergoryPage(cat BlogCat, blist *BlogList) {
 	// Write out Frame
 	frameData := &SubPage{
 		Title:   "Blog - " + string(cat),
-		FullURL: "http://www.claire-blackshaw.com/blog/cat/" + cat.UrlVer() + "/",
+		FullURL: "/blog/cat/" + cat.UrlVer() + "/",
 		Content: template.HTML(outBuffer.String()),
 	}
 
