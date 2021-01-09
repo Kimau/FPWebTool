@@ -11,12 +11,10 @@ import (
 )
 
 var (
-	buildDate   string
-	flagGenSite *bool
+	buildDate string
 )
 
 const publicHtmlRoot = "./public_html/"
-
 
 func scanForInput() chan string {
 	lines := make(chan string)
@@ -36,13 +34,13 @@ func processCommand(line string, wf *WebFace) {
 	// fmt.Println(line)
 
 	switch line {
-	case "x","exit":
+	case "x", "exit":
 		log.Fatalln("Exit")
 	case "g", "generate":
 		Generate()
 		wf.GlobalTemplateData["isGenerating"] = "Done"
 	default:
-		fmt.Println("Commands: " + strings.Join([]string{"g","generate","x","exit"}, " "))
+		fmt.Println("Commands: " + strings.Join([]string{"g", "generate", "x", "exit"}, " "))
 	}
 }
 
@@ -50,7 +48,7 @@ func copyFolderOver(folder string, destFolder string, c chan (int)) {
 	err := CopyTree("./"+folder, publicHtmlRoot+destFolder, false)
 
 	if err != nil {
-		log.Fatalln("Failed to copy %s because %s", folder, err)
+		log.Fatalln("Failed to copy " + folder + " because " + err.Error())
 	}
 
 	log.Printf("Copied %s to web root\n", folder)
@@ -73,13 +71,18 @@ func Generate() {
 }
 
 func main() {
-	flagGenSite = flag.Bool("gen", false, "Should Website be generated")
+	flagGenSite := flag.Bool("gen", false, "Should Website be generated")
+	microGenSite := flag.Bool("micro", false, "Should Micro be generated")
 	flag.Parse()
 
 	log.Println(buildDate)
 
 	if *flagGenSite {
 		Generate()
+	} else if *microGenSite {
+		generateDataOnly() // only
+		setupRoot()
+		GenerateMicro()
 	} else {
 		generateDataOnly() // only
 	}

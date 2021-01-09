@@ -68,7 +68,6 @@ func init() {
 		log.Fatalln(err)
 		return
 	}
-
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -108,7 +107,10 @@ func (bl *BlogList) SaveToFile() {
 
 func (bl *BlogList) GeneratePage() {
 	var outBuffer bytes.Buffer
-	blogIndexTemp.Execute(&outBuffer, bl)
+	err := blogIndexTemp.Execute(&outBuffer, bl)
+	if err != nil {
+		log.Fatalln("Error in Template ", err)
+	}
 
 	// Write out Frame
 	frameData := &SubPage{
@@ -122,7 +124,7 @@ func (bl *BlogList) GeneratePage() {
 		log.Fatalln("Error in File ", fileErr)
 	}
 
-	err := RootTemp.Execute(f, frameData)
+	err = RootTemp.Execute(f, frameData)
 	if err != nil {
 		log.Fatalln(err)
 		return
@@ -322,7 +324,7 @@ func GenerateBlog() {
 			log.Fatalln(err)
 			return
 		}
-			
+
 		v.GeneratePage()
 	}
 	log.Println("Removed ", removedCat)
@@ -341,7 +343,10 @@ func GenerateBlogCatergoryPage(cat BlogCat, blist *BlogList) {
 	var err error
 	var outBuffer bytes.Buffer
 
-	blogIndexTemp.Execute(&outBuffer, blist)
+	err = blogIndexTemp.Execute(&outBuffer, blist)
+	if err != nil {
+		log.Fatalln("Error in Template ", err)
+	}
 
 	// Write out Frame
 	frameData := &SubPage{

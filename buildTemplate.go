@@ -31,12 +31,14 @@ type TwitterCard struct {
 }
 
 type GenerateData struct { // Loaded from files and Generated
-	Feed      BlogList
-	Hobby     HobbyList
-	Job       JobList
-	ShortFeed BlogList
-	GameList  GameList
-	Platforms []string
+	Micro      MicroList
+	Feed       BlogList
+	Hobby      HobbyList
+	Job        JobList
+	ShortFeed  BlogList
+	ShortMicro MicroList
+	GameList   GameList
+	Platforms  []string
 }
 
 type TemplateRoot struct {
@@ -44,10 +46,9 @@ type TemplateRoot struct {
 }
 
 var (
-	genData   *GenerateData
+	genData  *GenerateData
 	RootTemp *template.Template
 )
-
 
 func loadJSONBlob(filename string, jObj interface{}) {
 	log.Println("Loading ", filename)
@@ -59,7 +60,7 @@ func loadJSONBlob(filename string, jObj interface{}) {
 
 	err = json.Unmarshal(jsonBlob, jObj)
 	if err != nil {
-		log.Fatalln("Error in JSON ", err)
+		log.Fatalln("Error in JSON ", filename, " - ", err)
 	}
 }
 
@@ -67,7 +68,7 @@ func saveJSONBlob(filename string, jObj interface{}) {
 	log.Println("Saving ", filename)
 	b, err := json.MarshalIndent(jObj, "", "  ")
 	if err != nil {
-		log.Fatalln("Error in JSON ", err)
+		log.Fatalln("Error in JSON ", filename, " - ", err)
 	}
 
 	os.Remove(filename)
@@ -91,7 +92,10 @@ func GenerateAbout() {
 	// Run Template
 
 	var outBuffer bytes.Buffer
-	aboutIndexTemp.Execute(&outBuffer, genData)
+	err = aboutIndexTemp.Execute(&outBuffer, genData)
+	if err != nil {
+		log.Fatalln("Error in Template ", err)
+	}
 
 	// Write out Frame
 	frameData := &SubPage{
@@ -124,9 +128,15 @@ func generateDataOnly() {
 	genData.Job.LoadFromFile()
 	genData.Feed.LoadFromFile()
 	genData.Hobby.LoadFromFile()
+	LoadFromMicroListFolder()
 
 	// Build Short Feed
-	genData.ShortFeed = genData.Feed[0:5]
+	genData.ShortFeed = genData.Feed[0:3]
+	if len(genData.Micro) > 1 {
+		genData.ShortMicro = genData.Micro[0:1]
+	} else {
+		genData.ShortMicro = genData.Micro
+	}
 
 	// Build Game List
 	genData.GameList = BuildFromJobs(&genData.Job)
@@ -137,7 +147,7 @@ func generateDataOnly() {
 	for _, g := range genData.GameList {
 		for _, p := range g.Platform {
 			_, ok := platformMap[p]
-			if(!ok) {
+			if !ok {
 				platformMap[p] = 1
 				genData.Platforms = append(genData.Platforms, p)
 			}
@@ -145,15 +155,22 @@ func generateDataOnly() {
 	}
 }
 
-func genWebsite() {
-	generateDataOnly()
-
+func setupRoot() {
 	var err error
 	RootTemp, err = template.ParseFiles("Templates/root.html")
 	if err != nil {
 		log.Fatalln(err)
 		return
 	}
+}
+
+func genWebsite() {
+	generateDataOnly()
+
+	setupRoot()
+
+	log.Println("Generating Micro")
+	GenerateMicro()
 
 	log.Println("Generating Blog ")
 	GenerateBlog()

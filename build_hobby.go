@@ -15,8 +15,8 @@ type HobbyProject struct {
 	BodyList []string  `json:"desc"`
 	Images   []string  `json:"images"`
 	Tags     []string  `json:"tags"`
-	Active bool `json:"active"`
-	Recent bool `json:"recent"`
+	Active   bool      `json:"active"`
+	Recent   bool      `json:"recent"`
 }
 
 var (
@@ -40,10 +40,14 @@ type HobbyList []*HobbyProject
 func (hl *HobbyList) LoadFromFile() {
 	loadJSONBlob("Data/hobby.js", hl)
 
-	for _,v := range *hl {
-		for _,t := range v.Tags {
-			if(t == "active") { v.Active = true }
-			if(t == "recent") { v.Recent = true }
+	for _, v := range *hl {
+		for _, t := range v.Tags {
+			if t == "active" {
+				v.Active = true
+			}
+			if t == "recent" {
+				v.Recent = true
+			}
 		}
 	}
 }
@@ -65,7 +69,7 @@ func (hl *HobbyList) GeneratePage() {
 		Content: template.HTML(outBuffer.String()),
 	}
 
-	os.MkdirAll(publicHtmlRoot + "projects/", 0777)
+	os.MkdirAll(publicHtmlRoot+"projects/", 0777)
 
 	f, fileErr := os.Create(publicHtmlRoot + "projects/index.html")
 	if fileErr != nil {

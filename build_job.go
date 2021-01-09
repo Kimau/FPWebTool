@@ -10,27 +10,27 @@ import (
 )
 
 type JobObject struct {
-	Company string   `json:"company"`
-	Role    string   `json:"role"`
-	Start   string   `json:"start"`
-	End     string   `json:"end"`
-	Body    string   `json:"body"`
-	Games   GameList `json:"games"`
+	Company string    `json:"company"`
+	Role    string    `json:"role"`
+	Start   string    `json:"start"`
+	End     string    `json:"end"`
+	Body    string    `json:"body"`
+	Games   GameList  `json:"games"`
 	Date    time.Time `json:"date"`
 }
 
 type GameProject struct {
-	Title     string   `json:"title"`
-	Developer string   `json:"developer"`
-	Job       string   `json:"job"`
-	Publisher string   `json:"publisher"`
-	Released  string   `json:"released"`
-	Position  string   `json:"position"`
-	Website   string   `json:"website"`
-	Youtube   string   `json:"youtube"`
-	Platform  []string `json:"platform"`
-	Images    []string `json:"images"`
-	Body      []string `json:"body"`
+	Title     string    `json:"title"`
+	Developer string    `json:"developer"`
+	Job       string    `json:"job"`
+	Publisher string    `json:"publisher"`
+	Released  string    `json:"released"`
+	Position  string    `json:"position"`
+	Website   string    `json:"website"`
+	Youtube   string    `json:"youtube"`
+	Platform  []string  `json:"platform"`
+	Images    []string  `json:"images"`
+	Body      []string  `json:"body"`
 	Date      time.Time `json:"date"`
 }
 
@@ -67,7 +67,10 @@ func (jo *JobList) GeneratePage() {
 	}
 
 	var outBuffer bytes.Buffer
-	jobIndexTemp.Execute(&outBuffer, genData)
+	err = jobIndexTemp.Execute(&outBuffer, genData)
+	if err != nil {
+		log.Fatalln("Error in Template ", err)
+	}
 
 	// Write out Frame
 	frameData := &SubPage{
@@ -82,7 +85,11 @@ func (jo *JobList) GeneratePage() {
 		log.Fatalln("Error in File ", err)
 	}
 
-	RootTemp.Execute(outFile, frameData)
+	err = RootTemp.Execute(outFile, frameData)
+	if err != nil {
+		log.Fatalln("Error in Template ", err)
+	}
+
 	outFile.Close()
 }
 
