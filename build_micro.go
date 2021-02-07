@@ -3,15 +3,20 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"html"
 	"html/template"
 	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
+	"github.com/microcosm-cc/bluemonday"
 	"github.com/russross/blackfriday"
 )
 
@@ -95,6 +100,61 @@ func LoadFromMicroListFolder() {
 	err := filepath.Walk("./microdata", LoadSingleFile)
 	if err != nil {
 		log.Println(err)
+	}
+
+	// merge microdata into blog feed
+	re := regexp.MustCompile("/[^a-z0-9]/")
+
+	for _, v := range genData.Micro {
+		k := strings.ToLower(v.Title)
+		k = re.ReplaceAllString(k, "")
+		strings.ReplaceAll(k, "/[^a-z0-9]/g", "")
+
+		// Extract Header if there is one
+		hre := regexp.MustCompile("<h[0-9]>([^<]*)</h[0-9]>")
+		braw := string(v.Body)
+		loc := hre.FindStringSubmatchIndex(braw)
+		if loc != nil {
+			v.Title = braw[loc[2]:loc[3]]
+			braw = braw[0:loc[0]] + braw[loc[1]:]
+		}
+		v.Title = strings.Trim(v.Title, " .\n")
+		v.Title = strings.ToUpper(v.Title[0:1]) + v.Title[1:]
+
+		// Convert to Blog
+		blogFromMicro := BlogPost{
+			Key:   k,
+			Title: v.Title,
+			Date:  v.Date,
+			Body:  template.HTML(braw),
+		}
+
+		// strip html from body
+		plainBody := braw
+		p := bluemonday.StripTagsPolicy()
+		plainBody = p.Sanitize(plainBody)
+		plainBody = strings.ReplaceAll(plainBody, "\n", "")
+		if len(plainBody) > 400 {
+			plainBody = plainBody[0:400]
+
+			r, size := utf8.DecodeLastRuneInString(plainBody)
+			for false == unicode.IsSpace(r) {
+				if r == utf8.RuneError && (size == 0 || size == 1) {
+					size = 0
+				}
+
+				plainBody = plainBody[:len(plainBody)-size]
+				r, size = utf8.DecodeLastRuneInString(plainBody)
+			}
+		}
+		blogFromMicro.ShortDesc = html.UnescapeString(plainBody)
+		blogFromMicro.ShortDesc = strings.ReplaceAll(blogFromMicro.ShortDesc, ".", ". ")
+
+		blogFromMicro.RawCategory = []BlogCat{"micro"}
+		blogFromMicro.Category = []BlogCat{"micro"}
+		blogFromMicro.SetNewPubDate(v.Date)
+		blogFromMicro.IsMicro = true
+		genData.Feed = append(genData.Feed, &blogFromMicro)
 	}
 }
 

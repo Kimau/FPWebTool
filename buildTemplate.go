@@ -36,7 +36,7 @@ type GenerateData struct { // Loaded from files and Generated
 	Hobby      HobbyList
 	Job        JobList
 	ShortFeed  BlogList
-	ShortMicro MicroList
+	ShortMicro BlogList
 	GameList   GameList
 	Platforms  []string
 }
@@ -131,12 +131,8 @@ func generateDataOnly() {
 	LoadFromMicroListFolder()
 
 	// Build Short Feed
-	genData.ShortFeed = genData.Feed[0:3]
-	if len(genData.Micro) > 1 {
-		genData.ShortMicro = genData.Micro[0:1]
-	} else {
-		genData.ShortMicro = genData.Micro
-	}
+	genData.ShortFeed = genData.Feed[1:4]
+	genData.ShortMicro = genData.Feed[:1]
 
 	// Build Game List
 	genData.GameList = BuildFromJobs(&genData.Job)

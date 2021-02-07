@@ -33,6 +33,7 @@ type BlogPost struct {
 	Date     time.Time     `json:"-"`
 	Body     template.HTML `json:"-"`
 	DateStr  string        `json:"-"`
+	IsMicro  bool          `json:"-"`
 }
 
 var (
@@ -216,11 +217,16 @@ func (bp *BlogPost) GeneratePage() {
 		bp.ImageWidth, bp.ImageHeight = "120", "120"
 	}
 
-	var outBuffer bytes.Buffer
-	err = blogTemp.Execute(&outBuffer, bp)
-	if err != nil {
-		log.Fatalln(err)
-		return
+	blogBody := bp.Body
+	{
+		var outBuffer bytes.Buffer
+		err = blogTemp.Execute(&outBuffer, bp)
+		if err != nil {
+			log.Fatalln(err)
+			return
+		}
+
+		blogBody = template.HTML(outBuffer.String())
 	}
 
 	// Twitter Card
@@ -254,7 +260,7 @@ func (bp *BlogPost) GeneratePage() {
 		Title:     bp.Title,
 		FullURL:   bp.Link,
 		ShortDesc: bp.ShortDesc,
-		Content:   template.HTML(outBuffer.String()),
+		Content:   blogBody,
 		Twitter:   tc,
 	}
 
@@ -307,22 +313,12 @@ func GenerateBlog() {
 		}
 
 		v.FixupDateFromPubStr()
-		/*wg.Add(1)
-		go func(bp *BlogPost) {
-			defer wg.Done()
-			err := bp.LoadBodyFromFile()
+		if len(v.Body) < 1 {
+			err := v.LoadBodyFromFile()
 			if err != nil {
 				log.Fatalln(err)
 				return
 			}
-
-			bp.GeneratePage()
-
-		}(v)*/
-		err := v.LoadBodyFromFile()
-		if err != nil {
-			log.Fatalln(err)
-			return
 		}
 
 		v.GeneratePage()

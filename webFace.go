@@ -163,6 +163,8 @@ func (wf *WebFace) ServeBlogPage(w http.ResponseWriter, req *http.Request) {
 		}
 
 	case "save":
+		log.Fatalln("This is fucked up don't use it esp save cause of microdata")
+
 		b.Title = req.FormValue("Title")
 		catList := strings.Split(strings.TrimRight(req.FormValue("RawCategory"), " ,"), ",")
 		b.RawCategory = []BlogCat{}
