@@ -125,8 +125,11 @@ func generateDataOnly() {
 		Job:   JobList{},
 	}
 
+	log.Println("Do Jobs...");
 	genData.Job.LoadFromFile()
+	log.Println("Do Feed...");
 	genData.Feed.LoadFromFile()
+	log.Println("Do Hobby...");
 	genData.Hobby.LoadFromFile()
 	LoadFromMicroListFolder()
 
