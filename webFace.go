@@ -92,7 +92,7 @@ func (wf *WebFace) MakeTemplates() {
 </html>`)
 
 	if err != nil {
-		log.Fatalln(err)
+		CheckErr(err)
 	}
 
 	EditTemplate, err = template.New("edit").Parse(`<!DOCTYPE html>
@@ -124,7 +124,7 @@ func (wf *WebFace) MakeTemplates() {
 </html>`)
 
 	if err != nil {
-		log.Fatalln(err)
+		CheckErr(err)
 	}
 
 	AdminTemplate, err = template.New("admin").Parse(`<!DOCTYPE html>
@@ -142,12 +142,12 @@ func (wf *WebFace) MakeTemplates() {
 </html>`)
 
 	if err != nil {
-		log.Fatalln(err)
+		CheckErr(err)
 	}
 	//
 }
 
-var validBlogPath = regexp.MustCompile("^/admin/blog/([a-zA-Z0-9\\-]+)/(edit|save|view)$")
+var validBlogPath = regexp.MustCompile(`^/admin/blog/([a-zA-Z0-9\\-]+)/(edit|save|view)$`)
 
 func (wf *WebFace) ServeBlogPage(w http.ResponseWriter, req *http.Request) {
 	m := validBlogPath.FindStringSubmatch(req.URL.Path)
@@ -159,7 +159,7 @@ func (wf *WebFace) ServeBlogPage(w http.ResponseWriter, req *http.Request) {
 	case "edit":
 		err := EditTemplate.ExecuteTemplate(w, "edit", b)
 		if err != nil {
-			log.Fatalln(err)
+			CheckErr(err)
 		}
 
 	case "save":
@@ -189,7 +189,7 @@ func (wf *WebFace) ServeBlogPage(w http.ResponseWriter, req *http.Request) {
 		genData.Feed.SaveToFile()
 		b.GeneratePage()
 
-		http.Redirect(w, req, "/admin/blog/"+m[1]+"/edit", 302)
+		http.Redirect(w, req, "/admin/blog/"+m[1]+"/edit", http.StatusFound)
 
 	case "view":
 		fmt.Fprint(w, "Big TODO okay")
@@ -201,14 +201,14 @@ func (wf *WebFace) ServeBlogPage(w http.ResponseWriter, req *http.Request) {
 func (wf *WebFace) ServeGenerate(w http.ResponseWriter, req *http.Request) {
 	wf.InMsg <- "generate"
 	wf.GlobalTemplateData["isGenerating"] = "generating"
-	http.Redirect(w, req, "/admin/", 302)
+	http.Redirect(w, req, "/admin/", http.StatusFound)
 }
 
 func (wf *WebFace) ServeAdminPage(w http.ResponseWriter, req *http.Request) {
 
 	err := AdminTemplate.ExecuteTemplate(w, "admin", wf.GlobalTemplateData)
 	if err != nil {
-		log.Fatalln(err)
+		CheckErr(err)
 	}
 }
 
@@ -216,7 +216,7 @@ func (wf *WebFace) ServeBlogList(w http.ResponseWriter, req *http.Request) {
 
 	err := ListTemplate.ExecuteTemplate(w, "list", genData.Feed)
 	if err != nil {
-		log.Fatalln(err)
+		CheckErr(err)
 	}
 }
 
@@ -225,9 +225,7 @@ func (wf *WebFace) HostLoop() {
 
 	log.Println("Listening on " + wf.Addr)
 	err := http.ListenAndServe(wf.Addr, wf.Router)
-	if err != nil {
-		log.Fatal("ListenAndServe:", err)
-	}
+	CheckErrContext(err, "ListenAndServe:")
 }
 
 //===

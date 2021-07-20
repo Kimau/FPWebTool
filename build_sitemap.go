@@ -43,10 +43,17 @@ func GenerateSiteMap() {
 		})
 	}
 
-	f, err := os.Create(publicHtmlRoot + "sitemap.xml")
-	if err != nil {
-		log.Fatalln("Error in Sitemap ", err)
+	for _, g := range genData.Gallery {
+		siteLinks = append(siteLinks, SiteMapLink{
+			Loc:        g.Link,
+			LastMod:    g.Date,
+			Changefreq: "monthly",
+			Priority:   0.5,
+		})
 	}
+
+	f, err := os.Create(publicHtmlRoot + "sitemap.xml")
+	CheckErrContext(err, "Error in Sitemap ")
 
 	f.WriteString(`<?xml version="1.0" encoding="UTF-8"?>
   <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">

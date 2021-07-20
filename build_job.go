@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"html/template"
-	"log"
 	"os"
 	"sort"
 	"time"
@@ -35,13 +34,6 @@ type GameProject struct {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-//
-const (
-	joblongform  = "2006 January"
-	gamelongform = "02 January 2006"
-)
-
-////////////////////////////////////////////////////////////////////////////////
 // Job List
 type JobList []*JobObject
 
@@ -61,16 +53,11 @@ func (jo *JobList) LoadFromFile() {
 
 func (jo *JobList) GeneratePage() {
 	jobIndexTemp, err := template.ParseFiles("Templates/job.html")
-	if err != nil {
-		log.Fatalln(err)
-		return
-	}
+	CheckErr(err)
 
 	var outBuffer bytes.Buffer
 	err = jobIndexTemp.Execute(&outBuffer, genData)
-	if err != nil {
-		log.Fatalln("Error in Template ", err)
-	}
+	CheckErrContext(err, "Error in Template ")
 
 	// Write out Frame
 	frameData := &SubPage{
@@ -81,14 +68,10 @@ func (jo *JobList) GeneratePage() {
 
 	var outFile *os.File
 	outFile, err = os.Create(publicHtmlRoot + "job/index.html")
-	if err != nil {
-		log.Fatalln("Error in File ", err)
-	}
+	CheckErrContext(err, "Error in File ")
 
 	err = RootTemp.Execute(outFile, frameData)
-	if err != nil {
-		log.Fatalln("Error in Template ", err)
-	}
+	CheckErrContext(err, "Error in Template ")
 
 	outFile.Close()
 }

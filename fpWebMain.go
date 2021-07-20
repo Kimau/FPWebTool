@@ -47,9 +47,7 @@ func processCommand(line string, wf *WebFace) {
 func copyFolderOver(folder string, destFolder string, c chan (int)) {
 	err := CopyTree("./"+folder, publicHtmlRoot+destFolder, false)
 
-	if err != nil {
-		log.Fatalln("Failed to copy " + folder + " because " + err.Error())
-	}
+	CheckErrContext(err, "Failed to copy", folder, publicHtmlRoot+destFolder)
 
 	log.Printf("Copied %s to web root\n", folder)
 	c <- 1
@@ -72,19 +70,17 @@ func Generate() {
 
 func main() {
 	flagGenSite := flag.Bool("gen", false, "Should Website be generated")
-	microGenSite := flag.Bool("micro", false, "Should Micro be generated")
 	flag.Parse()
 
 	log.Println(buildDate)
 
 	if *flagGenSite {
 		Generate()
-	} else if *microGenSite {
-		generateDataOnly() // only
-		setupRoot()
-		GenerateMicro()
 	} else {
+		setupRoot()
 		generateDataOnly() // only
+		GenerateGallery()
+		GenerateMicro()
 	}
 
 	wf := MakeWebFace(":1667", publicHtmlRoot)

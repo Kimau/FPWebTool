@@ -31,6 +31,7 @@ type TwitterCard struct {
 }
 
 type GenerateData struct { // Loaded from files and Generated
+	Gallery    GalleryList
 	Micro      MicroList
 	Feed       BlogList
 	Hobby      HobbyList
@@ -52,31 +53,21 @@ var (
 
 func loadJSONBlob(filename string, jObj interface{}) {
 	log.Println("Loading ", filename)
-	jsonBlob, err := ioutil.ReadFile(filename)
-	if err != nil {
-		log.Fatalln(err)
-		return
-	}
+	jsonBlob, err := os.ReadFile(filename)
+	CheckErr(err)
 
 	err = json.Unmarshal(jsonBlob, jObj)
-	if err != nil {
-		log.Fatalln("Error in JSON ", filename, " - ", err)
-	}
+	CheckErrContext(err, "Error in JSON ", filename, " - ")
 }
 
 func saveJSONBlob(filename string, jObj interface{}) {
 	log.Println("Saving ", filename)
 	b, err := json.MarshalIndent(jObj, "", "  ")
-	if err != nil {
-		log.Fatalln("Error in JSON ", filename, " - ", err)
-	}
+	CheckErrContext(err, "Error in JSON ", filename, " - ")
 
 	os.Remove(filename)
 	err = ioutil.WriteFile(filename, b, 0777)
-	if err != nil {
-		log.Fatalln(err)
-		return
-	}
+	CheckErr(err)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -84,18 +75,13 @@ func saveJSONBlob(filename string, jObj interface{}) {
 func GenerateAbout() {
 	os.RemoveAll(publicHtmlRoot + "index.html")
 	aboutIndexTemp, err := template.ParseFiles("Templates/about.html")
-	if err != nil {
-		log.Fatalln(err)
-		return
-	}
+	CheckErr(err)
 
 	// Run Template
 
 	var outBuffer bytes.Buffer
 	err = aboutIndexTemp.Execute(&outBuffer, genData)
-	if err != nil {
-		log.Fatalln("Error in Template ", err)
-	}
+	CheckErrContext(err, "Error in Template ")
 
 	// Write out Frame
 	frameData := &SubPage{
@@ -105,15 +91,10 @@ func GenerateAbout() {
 	}
 
 	f, fileErr := os.Create(publicHtmlRoot + "index.html")
-	if fileErr != nil {
-		log.Fatalln("Error in File ", fileErr)
-	}
+	CheckErrContext(fileErr, "Error in File ")
 
 	err = RootTemp.Execute(f, frameData)
-	if err != nil {
-		log.Fatalln(err)
-		return
-	}
+	CheckErr(err)
 
 	f.Close()
 }
@@ -125,13 +106,14 @@ func generateDataOnly() {
 		Job:   JobList{},
 	}
 
-	log.Println("Do Jobs...");
+	log.Println("Do Jobs...")
 	genData.Job.LoadFromFile()
-	log.Println("Do Feed...");
+	log.Println("Do Feed...")
 	genData.Feed.LoadFromFile()
-	log.Println("Do Hobby...");
+	log.Println("Do Hobby...")
 	genData.Hobby.LoadFromFile()
 	LoadFromMicroListFolder()
+	LoadFromGalleryListFolder()
 
 	// Build Short Feed
 	genData.ShortFeed = genData.Feed[1:4]
@@ -157,16 +139,16 @@ func generateDataOnly() {
 func setupRoot() {
 	var err error
 	RootTemp, err = template.ParseFiles("Templates/root.html")
-	if err != nil {
-		log.Fatalln(err)
-		return
-	}
+	CheckErr(err)
 }
 
 func genWebsite() {
 	generateDataOnly()
 
 	setupRoot()
+
+	log.Println("Generating Gallery")
+	GenerateGallery()
 
 	log.Println("Generating Micro")
 	GenerateMicro()

@@ -42,7 +42,6 @@ var (
 	regUrlChar     *regexp.Regexp
 	regUrlSpace    *regexp.Regexp
 	regStripMarkup *regexp.Regexp
-	regCatchImage  *regexp.Regexp
 )
 
 const longformPubStr = "Mon, 02 Jan 2006 15:04:05 -0700"
@@ -56,19 +55,12 @@ func init() {
 	regUrlChar = regexp.MustCompile("[^A-Za-z]")
 	regUrlSpace = regexp.MustCompile(" ")
 	regStripMarkup = regexp.MustCompile("<[^<>]*>")
-	regCatchImage = regexp.MustCompile("<img[^>]*\"(/images/Blog[^\"]*)\"[^>]*>")
 
 	blogIndexTemp, err = template.ParseFiles("Templates/blogindex.html")
-	if err != nil {
-		log.Fatalln(err)
-		return
-	}
+	CheckErr(err)
 
 	blogTemp, err = template.ParseFiles("Templates/blogpost.html")
-	if err != nil {
-		log.Fatalln(err)
-		return
-	}
+	CheckErr(err)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -109,9 +101,7 @@ func (bl *BlogList) SaveToFile() {
 func (bl *BlogList) GeneratePage() {
 	var outBuffer bytes.Buffer
 	err := blogIndexTemp.Execute(&outBuffer, bl)
-	if err != nil {
-		log.Fatalln("Error in Template ", err)
-	}
+	CheckErrContext(err, "Error in Template ")
 
 	// Write out Frame
 	frameData := &SubPage{
@@ -121,15 +111,10 @@ func (bl *BlogList) GeneratePage() {
 	}
 
 	f, fileErr := os.Create(publicHtmlRoot + "blog/index.html")
-	if fileErr != nil {
-		log.Fatalln("Error in File ", fileErr)
-	}
+	CheckErrContext(fileErr, "Error in File ")
 
 	err = RootTemp.Execute(f, frameData)
-	if err != nil {
-		log.Fatalln(err)
-		return
-	}
+	CheckErr(err)
 
 	f.Close()
 }
@@ -138,10 +123,8 @@ func (bl *BlogList) GeneratePage() {
 // Blog Post
 func (bp *BlogPost) LoadBodyFromFile() error {
 	srcFile := fmt.Sprintf("blogdata/post/%d/%s.html", bp.Date.Year(), bp.Key)
-	bodyBytes, err := ioutil.ReadFile(srcFile)
-	if err != nil {
-		return err
-	}
+	bodyBytes, err := os.ReadFile(srcFile)
+	CheckErr(err)
 
 	bp.Body = template.HTML(bodyBytes)
 	return nil
@@ -149,7 +132,7 @@ func (bp *BlogPost) LoadBodyFromFile() error {
 
 func (bp *BlogPost) SaveBodyToFile() error {
 	if len(bp.Body) < 8 {
-		return errors.New("Body is null or less than 8 characters")
+		return errors.New("body is null or less than 8 characters")
 	}
 
 	// Make Folder
@@ -164,7 +147,7 @@ func (bp *BlogPost) SaveBodyToFile() error {
 	os.Remove(srcFile)
 	err = ioutil.WriteFile(srcFile, []byte(bp.Body), 0777)
 	if err != nil {
-		log.Fatalln(err)
+		CheckErr(err)
 	}
 
 	return nil
@@ -175,7 +158,7 @@ func (bp *BlogPost) FixupDateFromPubStr() {
 
 	bp.Date, err = time.Parse(longformPubStr, bp.Pubdate)
 	if err != nil {
-		log.Fatalln(err)
+		CheckErr(err)
 	}
 
 	bp.DateStr = fmt.Sprintf("%d %v %d", bp.Date.Day(), bp.Date.Month(), bp.Date.Year())
@@ -195,9 +178,7 @@ func (bp *BlogPost) GeneratePage() {
 	log.Println(bp.Link)
 
 	err = os.MkdirAll(publicHtmlRoot+bp.Link, 0777)
-	if err != nil {
-		log.Fatalln("Error in Mkdir ", err)
-	}
+	CheckErrContext(err, "Error in Mkdir ")
 
 	// Get Banner Image Size (if I have one)
 	if len(bp.BannerImage) > 3 {
@@ -217,17 +198,11 @@ func (bp *BlogPost) GeneratePage() {
 		bp.ImageWidth, bp.ImageHeight = "120", "120"
 	}
 
-	blogBody := bp.Body
-	{
-		var outBuffer bytes.Buffer
-		err = blogTemp.Execute(&outBuffer, bp)
-		if err != nil {
-			log.Fatalln(err)
-			return
-		}
+	var outBuffer bytes.Buffer
+	err = blogTemp.Execute(&outBuffer, bp)
+	CheckErr(err)
 
-		blogBody = template.HTML(outBuffer.String())
-	}
+	blogBody := template.HTML(outBuffer.String())
 
 	// Twitter Card
 	if len(bp.ShortDesc) < 4 {
@@ -271,10 +246,7 @@ func (bp *BlogPost) GeneratePage() {
 
 	// Note: Don't like the fact we reference RootTemp here
 	err = RootTemp.Execute(f, frameData)
-	if err != nil {
-		log.Fatalln(err)
-		return
-	}
+	CheckErr(err)
 
 	f.Close()
 }
@@ -287,13 +259,10 @@ func GenerateBlog() {
 
 	os.RemoveAll(publicHtmlRoot + "blog/")
 	err = os.MkdirAll(publicHtmlRoot+"blog/", 0777)
-	if err != nil {
-		log.Fatalln("Unable to make folder", err)
-	}
+	CheckErrContext(err, "Unable to make folder")
 
 	// Gather Catergories and filter out single use catergories
-	var catMap map[BlogCat]BlogList
-	catMap = make(map[BlogCat]BlogList)
+	catMap := make(map[BlogCat]BlogList)
 	for _, v := range genData.Feed {
 		for _, c := range v.RawCategory {
 			catMap[c] = append(catMap[c], v)
@@ -316,7 +285,7 @@ func GenerateBlog() {
 		if len(v.Body) < 1 {
 			err := v.LoadBodyFromFile()
 			if err != nil {
-				log.Fatalln(err)
+				CheckErr(err)
 				return
 			}
 		}
@@ -340,9 +309,7 @@ func GenerateBlogCatergoryPage(cat BlogCat, blist *BlogList) {
 	var outBuffer bytes.Buffer
 
 	err = blogIndexTemp.Execute(&outBuffer, blist)
-	if err != nil {
-		log.Fatalln("Error in Template ", err)
-	}
+	CheckErrContext(err, "Error in Template ")
 
 	// Write out Frame
 	frameData := &SubPage{
@@ -352,20 +319,13 @@ func GenerateBlogCatergoryPage(cat BlogCat, blist *BlogList) {
 	}
 
 	err = os.MkdirAll(publicHtmlRoot+"blog/cat/"+cat.UrlVer(), 0777)
-	if err != nil {
-		log.Fatalln("Error in Mkdir ", err)
-	}
+	CheckErrContext(err, "Error in Mkdir ")
 
 	f, fileErr := os.Create(publicHtmlRoot + "blog/cat/" + cat.UrlVer() + "/index.html")
-	if fileErr != nil {
-		log.Fatalln("Error in File ", fileErr)
-	}
+	CheckErrContext(fileErr, "Error in File ")
 
 	err = RootTemp.Execute(f, frameData)
-	if err != nil {
-		log.Fatalln(err)
-		return
-	}
+	CheckErr(err)
 
 	f.Close()
 }

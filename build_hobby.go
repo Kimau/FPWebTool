@@ -27,10 +27,7 @@ func init() {
 	var err error
 
 	hobbyIndexTemp, err = template.ParseFiles("Templates/projects.html")
-	if err != nil {
-		log.Fatalln(err)
-		return
-	}
+	CheckErr(err)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -57,10 +54,7 @@ func (hl *HobbyList) GeneratePage() {
 	var outBuffer bytes.Buffer
 
 	err = hobbyIndexTemp.Execute(&outBuffer, hl)
-	if err != nil {
-		log.Fatalln(err)
-		return
-	}
+	CheckErr(err)
 
 	// Write out Frame
 	frameData := &SubPage{
@@ -77,10 +71,7 @@ func (hl *HobbyList) GeneratePage() {
 	}
 
 	err = RootTemp.Execute(f, frameData)
-	if err != nil {
-		log.Fatalln(err)
-		return
-	}
+	CheckErr(err)
 
 	f.Close()
 }

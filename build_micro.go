@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"html"
 	"html/template"
-	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -29,10 +28,6 @@ type MicroPost struct {
 	Pubdate string        `json:"-"`
 }
 
-var (
-	microTemp *template.Template
-)
-
 ////////////////////////////////////////////////////////////////////////////////
 // Blog Listing
 type MicroList []*MicroPost
@@ -51,25 +46,27 @@ func LoadSingleFile(path string, info os.FileInfo, err error) error {
 	}
 
 	title := filepath.Base(path)
-	body := []byte{}
 	ext := filepath.Ext(path)
 	title = strings.TrimSuffix(title, ext)
 
+	var newPost MicroPost
+
 	if ext == ".md" {
-		body, err = ioutil.ReadFile(path)
+		markdown, err := os.ReadFile(path)
 		if err != nil {
 			fmt.Println("Failed to Read: " + path + " - " + err.Error())
 			return err
 		}
 
-		body = MarkdownToHTML(body)
+		newPost.Body = MarkdownToHTML(markdown)
 
 	} else if ext == ".html" {
-		body, err = ioutil.ReadFile(path)
+		body, err := os.ReadFile(path)
 		if err != nil {
 			fmt.Println("Failed to Read: " + path + " - " + err.Error())
 			return err
 		}
+		newPost.Body = template.HTML(body)
 	} else if ext == ".json" {
 		return nil
 	} else {
@@ -78,8 +75,6 @@ func LoadSingleFile(path string, info os.FileInfo, err error) error {
 	}
 
 	// See if there is a meta data
-	var newPost MicroPost
-
 	if _, err := os.Stat(path + ".json"); os.IsNotExist(err) {
 		newPost.Title = title
 		newPost.Date = info.ModTime()
@@ -87,7 +82,6 @@ func LoadSingleFile(path string, info os.FileInfo, err error) error {
 		loadJSONBlob(path+".json", &newPost)
 	}
 
-	newPost.Body = template.HTML(body)
 	newPost.Pubdate = newPost.Date.Format(longformPubStr)
 	newPost.DateStr = fmt.Sprintf("%d %v %d", newPost.Date.Day(), newPost.Date.Month(), newPost.Date.Year())
 	genData.Micro = append(genData.Micro, &newPost)
@@ -108,7 +102,7 @@ func LoadFromMicroListFolder() {
 	for _, v := range genData.Micro {
 		k := strings.ToLower(v.Title)
 		k = re.ReplaceAllString(k, "")
-		strings.ReplaceAll(k, "/[^a-z0-9]/g", "")
+		k = strings.ReplaceAll(k, "/[^a-z0-9]/g", "")
 
 		// Extract Header if there is one
 		hre := regexp.MustCompile("<h[0-9]>([^<]*)</h[0-9]>")
@@ -138,7 +132,7 @@ func LoadFromMicroListFolder() {
 			plainBody = plainBody[0:400]
 
 			r, size := utf8.DecodeLastRuneInString(plainBody)
-			for false == unicode.IsSpace(r) {
+			for !unicode.IsSpace(r) {
 				if r == utf8.RuneError && (size == 0 || size == 1) {
 					size = 0
 				}
@@ -166,7 +160,7 @@ func init() {
 }
 
 // MarkdownToHTML - Convert Markdown to HTML
-func MarkdownToHTML(input []byte) []byte {
+func MarkdownToHTML(input []byte) template.HTML {
 
 	renderer := blackfriday.HtmlRenderer(0|
 		blackfriday.HTML_USE_XHTML, "", "")
@@ -184,23 +178,18 @@ func MarkdownToHTML(input []byte) []byte {
 				blackfriday.EXTENSION_DEFINITION_LISTS,
 		},
 	)
-	return output
+	return template.HTML(output)
 }
 
 func GenerateMicro() {
 	microTemp, err := template.ParseFiles("Templates/micro.html")
-	if err != nil {
-		log.Fatalln(err)
-		return
-	}
+	CheckErr(err)
 
 	sort.Sort(genData.Micro)
 
 	var outBuffer bytes.Buffer
 	err = microTemp.Execute(&outBuffer, genData)
-	if err != nil {
-		log.Fatalln("Error in Template ", err)
-	}
+	CheckErrContext(err, "Error in Template ")
 
 	// Write out Frame
 	frameData := &SubPage{
@@ -210,21 +199,14 @@ func GenerateMicro() {
 	}
 
 	err = os.MkdirAll(publicHtmlRoot+"micro", 0777)
-	if err != nil {
-		log.Fatalln(err)
-		return
-	}
+	CheckErr(err)
 
 	var outFile *os.File
 	outFile, err = os.Create(publicHtmlRoot + "micro/index.html")
-	if err != nil {
-		log.Fatalln("Error in File ", err)
-	}
+	CheckErrContext(err, "Error in File ")
 
 	err = RootTemp.Execute(outFile, frameData)
-	if err != nil {
-		log.Fatalln("Error in Template ", err)
-	}
+	CheckErrContext(err, "Error in Template ")
 
 	outFile.Close()
 }
