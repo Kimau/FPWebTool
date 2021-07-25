@@ -14,17 +14,20 @@ import (
 )
 
 type GalleryPost struct {
-	Date    time.Time     `json:"pubDate"`
-	File    string        `json:"file"`
-	Link    string        `json:"link"`
-	Body    template.HTML `json:"body"`
-	DateStr string        `json:"datestr"`
-	Pubdate string        `json:"pubdate"`
-	Include []string      `json:"include"`
+	Date     time.Time     `json:"pubDate"`
+	File     string        `json:"file"`
+	Link     string        `json:"link"`
+	PostType string        `json:"posttype"`
+	Body     template.HTML `json:"body"`
+	DateStr  string        `json:"datestr"`
+	Pubdate  string        `json:"pubdate"`
+	Brief    string        `json:"brief"`
+	Include  []string      `json:"include"`
 }
 
 var (
 	regUrlSrc     *regexp.Regexp
+	regHeader     *regexp.Regexp
 	galleryTemp   *template.Template
 	galSingleTemp *template.Template
 	gallerySrcDir string
@@ -37,6 +40,7 @@ func init() {
 	var err error
 
 	regUrlSrc = regexp.MustCompile(`src="([^"]+)"`)
+	regHeader = regexp.MustCompile(`<h(1|2|3)>([^"]+)</h(1|2|3)>`)
 	gallerySrcDir = filepath.Clean("./gallery")
 
 	galleryTemp, err = template.ParseFiles("Templates/gallery.html")
@@ -77,12 +81,13 @@ func LoadGalleryFile(path string, info os.FileInfo, err error) error {
 
 	var relPath string
 	var newPost GalleryPost
-	if _, err := os.Stat(path + ".json"); os.IsNotExist(err) {
+	if true { // _, err := os.Stat(path + ".json"); os.IsNotExist(err) {
 		newPost.Date = info.ModTime()
 		newPost.File = filepath.Clean(path)
+		newPost.PostType = "post"
 
 		relPath, err = filepath.Rel(gallerySrcDir, newPost.File)
-		newPost.Link = strings.TrimSuffix(relPath, filepath.Ext(relPath)) + "html"
+		newPost.Link = filepath.ToSlash(strings.TrimSuffix(relPath, filepath.Ext(relPath)) + ".html")
 		CheckErr(err)
 
 		newPost.DateStr = fmt.Sprintf("%d %v %d", newPost.Date.Day(), newPost.Date.Month(), newPost.Date.Year())
@@ -97,14 +102,18 @@ func LoadGalleryFile(path string, info os.FileInfo, err error) error {
 
 	if (ext == ".gif") || (ext == ".bmp") {
 		newPost.Body = template.HTML(`<img class="pixel" src="` + newPost.File + `">`)
-		newPost.Include = append(newPost.Include, relPath)
+		newPost.Include = append(newPost.Include, filepath.ToSlash(relPath))
+		newPost.PostType = "image"
 	} else if (ext == ".png") || (ext == ".jpg") || (ext == ".jpeg") {
 		newPost.Body = template.HTML(`<img src="` + newPost.File + `">`)
-		newPost.Include = append(newPost.Include, relPath)
+		newPost.Include = append(newPost.Include, filepath.ToSlash(relPath))
+		newPost.PostType = "image"
 	} else if (ext == ".mp4") || (ext == ".avi") || (ext == ".mov") {
 		newPost.Body = template.HTML(`<video controls><source src="` + newPost.File + `" type="video/mp4"></video>`)
-		newPost.Include = append(newPost.Include, relPath)
+		newPost.Include = append(newPost.Include, filepath.ToSlash(relPath))
+		newPost.PostType = "movie"
 	} else if ext == ".txt" {
+		newPost.PostType = "txt"
 
 		body, err := os.ReadFile(path)
 		if err != nil {
@@ -113,6 +122,7 @@ func LoadGalleryFile(path string, info os.FileInfo, err error) error {
 		}
 
 		newPost.Body = template.HTML("<pre>" + string(body) + "</pre>")
+		newPost.Brief = string(body[:128])
 
 	} else if ext == ".md" {
 
@@ -122,13 +132,15 @@ func LoadGalleryFile(path string, info os.FileInfo, err error) error {
 			return err
 		}
 
-		newPost.Body = MarkdownToHTML(markdown)
+		newPost.Body = template.HTML(regUrlSrc.ReplaceAllStringFunc(string(MarkdownToHTML(markdown)), func(src string) string {
+			m := regUrlSrc.FindStringSubmatch(src)
+			dFile := fmt.Sprintf(`/%s/%s`, filepath.Dir(relPath), string(m[1]))
+			newPost.Include = append(newPost.Include, filepath.ToSlash(dFile))
 
-		files := regUrlSrc.FindAllSubmatch([]byte(newPost.Body), -1)
-		for i := range files {
-			dFile := filepath.Clean(string(files[i][1]))
-			newPost.Include = append(newPost.Include, dFile)
-		}
+			return fmt.Sprintf(`src="%s"`, dFile)
+		}))
+
+		newPost.Brief = regHeader.FindString(string(newPost.Body))
 
 	} else if ext == ".html" {
 		body, err := os.ReadFile(path)
@@ -136,13 +148,14 @@ func LoadGalleryFile(path string, info os.FileInfo, err error) error {
 			fmt.Println("Failed to Read: " + path + " - " + err.Error())
 			return err
 		}
-		newPost.Body = template.HTML(body)
 
-		files := regUrlSrc.FindAllSubmatch([]byte(newPost.Body), -1)
-		for i := range files {
-			dFile := filepath.Clean(string(files[i][1]))
-			newPost.Include = append(newPost.Include, dFile)
-		}
+		newPost.Body = template.HTML(regUrlSrc.ReplaceAllStringFunc(string(template.HTML(body)), func(src string) string {
+			m := regUrlSrc.FindStringSubmatch(src)
+			dFile := fmt.Sprintf(`/%s/%s`, filepath.Dir(relPath), string(m[1]))
+			newPost.Include = append(newPost.Include, filepath.ToSlash(dFile))
+
+			return fmt.Sprintf(`src="%s"`, dFile)
+		}))
 	} else if ext == ".json" {
 		return nil
 	} else {
@@ -189,13 +202,13 @@ func GenerateGallery() {
 
 		// Copy Dependent Files
 		for _, subF := range g.Include {
-			srcPath := filepath.Join(gallerySrcDir, relPath, subF)
-			tarPath = filepath.Join(tarDir, relPath, subF)
+			srcPathInclude := filepath.Join(gallerySrcDir, subF)
+			tarPathInclude := filepath.Join(tarDir, subF)
 
-			err := os.MkdirAll(filepath.Dir(tarPath), 0777)
+			err := os.MkdirAll(filepath.Dir(tarPathInclude), 0777)
 			CheckErr(err)
 
-			_, err = CopyFileLazy(srcPath, tarPath)
+			_, err = CopyFileLazy(srcPathInclude, tarPathInclude)
 			CheckErr(err)
 		}
 
@@ -205,11 +218,11 @@ func GenerateGallery() {
 			outFile, err = os.Create(tarPath)
 			CheckErrContext(err, "Error in File ")
 
-			prevLink := ""
+			prevLink := "/gallery/"
 			if (i - 1) >= 0 {
 				prevLink = "/gallery/" + genData.Gallery[i-1].Link
 			}
-			nextLink := ""
+			nextLink := "/gallery/"
 			if (i + 1) < len(genData.Gallery) {
 				nextLink = "/gallery/" + genData.Gallery[i+1].Link
 			}
@@ -260,4 +273,5 @@ func GenerateGallery() {
 
 		outFile.Close()
 	}
+
 }

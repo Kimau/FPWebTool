@@ -31,15 +31,16 @@ type TwitterCard struct {
 }
 
 type GenerateData struct { // Loaded from files and Generated
-	Gallery    GalleryList
-	Micro      MicroList
-	Feed       BlogList
-	Hobby      HobbyList
-	Job        JobList
-	ShortFeed  BlogList
-	ShortMicro BlogList
-	GameList   GameList
-	Platforms  []string
+	Gallery      GalleryList
+	Micro        MicroList
+	Feed         BlogList
+	Hobby        HobbyList
+	Job          JobList
+	ShortFeed    BlogList
+	ShortMicro   BlogList
+	ShortGallery GalleryList
+	GameList     GameList
+	Platforms    []string
 }
 
 type TemplateRoot struct {

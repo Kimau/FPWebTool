@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -35,7 +36,7 @@ func CopyTree(src string, dest string, verbose bool) error {
 			return nil
 
 		} else {
-			_, e := CopyFileLazyInfo(path, myDest, info)
+			_, e := CopyFileLazy(path, myDest)
 			return e
 		}
 	})
@@ -44,45 +45,44 @@ func CopyTree(src string, dest string, verbose bool) error {
 }
 
 func CopyFileLazy(src string, dest string) (int64, error) {
-	sInfo, e := os.Stat(src)
-	if e != nil {
-		return 0, e
+
+	srcInfo, err := os.Stat(src)
+	if err != nil {
+		fmt.Println("Couldn't Read:" + src)
+		return 0, err
 	}
 
-	return CopyFileLazyInfo(src, dest, sInfo)
-
-}
-
-func CopyFileLazyInfo(src string, dest string, info os.FileInfo) (int64, error) {
-
-	dInfo, e := os.Stat(dest)
-	if e != nil && dInfo != nil {
-		if (dInfo.ModTime() == info.ModTime()) && (dInfo.Size() == info.Size()) {
-			return dInfo.Size(), nil
+	destInfo, err := os.Stat(dest)
+	if err != nil && destInfo != nil {
+		if (destInfo.ModTime() == srcInfo.ModTime()) && (destInfo.Size() == srcInfo.Size()) {
+			return destInfo.Size(), nil
 		}
 	}
 
-	i, e := os.Open(src)
-	if e != nil {
-		log.Println("Error: Open " + src)
-		return 0, e
+	source, err := os.Open(src)
+	if err != nil {
+		fmt.Println("Error Reading:" + src)
+		return 0, err
 	}
-	defer i.Close()
-	o, e := os.Create(dest)
-	if e != nil {
-		log.Println("Error: Close " + dest)
-		return 0, e
+	defer source.Close()
+
+	destination, err := os.Create(dest)
+	if err != nil {
+		fmt.Println("Error Writing:" + src)
+		return 0, err
 	}
-	defer o.Close()
+	defer destination.Close()
 
-	size, e := o.ReadFrom(i)
-	os.Chtimes(dest, info.ModTime(), info.ModTime())
-
-	if e != nil {
-		return 0, fmt.Errorf("%s | CopyFileLazyInfo - \n\t[%s] -> \n\t[%s]", e.Error(), src, dest)
+	nBytes, err := io.Copy(destination, source)
+	if err != nil {
+		fmt.Println("Error Copying:" + src + ">" + dest)
+		return 0, err
 	}
+	if nBytes != srcInfo.Size() {
+		return 0, fmt.Errorf("failed to copy %d != %d", nBytes, srcInfo.Size())
+	}
+	return nBytes, err
 
-	return size, e
 }
 
 func CheckErr(err error) {
