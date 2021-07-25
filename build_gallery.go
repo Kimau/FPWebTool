@@ -65,6 +65,12 @@ func (gl GalleryList) Less(i, j int) bool {
 	return a < b
 }
 
+type GalleryListByDate []*GalleryPost
+
+func (gl GalleryListByDate) Len() int           { return len(gl) }
+func (gl GalleryListByDate) Swap(i, j int)      { gl[i], gl[j] = gl[j], gl[i] }
+func (gl GalleryListByDate) Less(i, j int) bool { return gl[i].Date.After(gl[j].Date) }
+
 // Support for .png .gif .jpg .mp4 .txt .html
 func LoadGalleryFile(path string, info os.FileInfo, err error) error {
 	if err != nil {
@@ -140,7 +146,12 @@ func LoadGalleryFile(path string, info os.FileInfo, err error) error {
 			return fmt.Sprintf(`src="%s"`, dFile)
 		}))
 
-		newPost.Brief = regHeader.FindString(string(newPost.Body))
+		headers := regHeader.FindStringSubmatch(string(newPost.Body))
+		if len(headers) > 1 {
+			newPost.Brief = headers[2]
+		} else {
+			newPost.Brief = string(string(newPost.Body))
+		}
 
 	} else if ext == ".html" {
 		body, err := os.ReadFile(path)
@@ -156,6 +167,13 @@ func LoadGalleryFile(path string, info os.FileInfo, err error) error {
 
 			return fmt.Sprintf(`src="%s"`, dFile)
 		}))
+
+		headers := regHeader.FindStringSubmatch(string(newPost.Body))
+		if len(headers) > 1 {
+			newPost.Brief = headers[1]
+		} else {
+			newPost.Brief = string(string(newPost.Body))
+		}
 	} else if ext == ".json" {
 		return nil
 	} else {
@@ -274,4 +292,10 @@ func GenerateGallery() {
 		outFile.Close()
 	}
 
+	genData.ShortGallery = nil
+	genData.ShortGallery = append(genData.ShortGallery, genData.Gallery...)
+	sort.Sort(genData.ShortGallery)
+	if len(genData.ShortGallery) > 8 {
+		genData.ShortGallery = genData.ShortGallery[:8]
+	}
 }
