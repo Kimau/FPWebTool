@@ -24,6 +24,7 @@ type BlogPost struct {
 	BannerImage string    `json:"bannerImage,omitempty"`
 	ShortDesc   string    `json:"desc,omitempty"`
 	RawCategory []BlogCat `json:"category"`
+	Class       string    `json:"classname"`
 
 	Image       string `json:"image,omitempty"`
 	ImageWidth  string `json:"imageWidth,omitempty"`

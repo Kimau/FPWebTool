@@ -22,6 +22,7 @@ import (
 type MicroPost struct {
 	Title string    `json:"title"`
 	Date  time.Time `json:"pubDate"`
+	Class string    `json:"classname"`
 
 	Body    template.HTML `json:"-"`
 	DateStr string        `json:"-"`
@@ -148,6 +149,7 @@ func LoadFromMicroListFolder() {
 		blogFromMicro.Category = []BlogCat{"micro"}
 		blogFromMicro.SetNewPubDate(v.Date)
 		blogFromMicro.IsMicro = true
+		blogFromMicro.Class = v.Class
 		genData.Feed = append(genData.Feed, &blogFromMicro)
 	}
 }
