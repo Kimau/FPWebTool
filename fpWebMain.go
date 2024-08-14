@@ -81,6 +81,7 @@ func main() {
 		generateDataOnly() // only
 		GenerateGallery()
 		GenerateMicro()
+		GenerateFeed()
 	}
 
 	wf := MakeWebFace(":1667", publicHtmlRoot)

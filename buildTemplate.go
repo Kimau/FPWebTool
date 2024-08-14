@@ -100,6 +100,8 @@ func GenerateAbout() {
 	f.Close()
 }
 
+// //////////////////////////////////////////////////////////////////////////////
+// Generate Data
 func generateDataOnly() {
 	genData = &GenerateData{
 		Feed:  BlogList{},
@@ -165,6 +167,9 @@ func genWebsite() {
 
 	log.Println("Generating About ")
 	GenerateAbout()
+
+	log.Println("Generating Feed ")
+	GenerateFeed()
 
 	log.Println("Generating Sitemap ")
 	GenerateSiteMap()
