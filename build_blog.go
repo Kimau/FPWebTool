@@ -183,18 +183,25 @@ func (bp *BlogPost) GeneratePage() {
 
 	// Get Banner Image Size (if I have one)
 	if len(bp.BannerImage) > 3 {
+		bp.BannerImage = cleanImagePath(bp.BannerImage)
 		w, h, e := getImageDimension("." + bp.BannerImage)
 		if e != nil {
-			log.Fatalln("Error getting Banner:", bp.Title, "\n>", bp.BannerImage, "\n>", e)
+			log.Println("Warning: Error getting Banner:", bp.Title, "\n>", bp.BannerImage, "\n>", e)
+			// Fall through to SmallImage or default
+		} else {
+			bp.Image = bp.BannerImage
+			bp.ImageWidth = fmt.Sprintf("%d", w)
+			bp.ImageHeight = fmt.Sprintf("%d", h)
 		}
+	}
 
-		bp.Image = bp.BannerImage
-		bp.ImageWidth = fmt.Sprintf("%d", w)
-		bp.ImageHeight = fmt.Sprintf("%d", h)
-	} else if len(bp.SmallImage) > 3 {
+	if bp.Image == "" && len(bp.SmallImage) > 3 {
+		bp.SmallImage = cleanImagePath(bp.SmallImage)
 		bp.Image = bp.SmallImage
 		bp.ImageWidth, bp.ImageHeight = "120", "120"
-	} else {
+	}
+
+	if bp.Image == "" {
 		bp.Image = "/images/fp_twitter_tiny.png"
 		bp.ImageWidth, bp.ImageHeight = "120", "120"
 	}

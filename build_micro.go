@@ -19,15 +19,24 @@ import (
 	"github.com/russross/blackfriday"
 )
 
+// Updated MicroPost struct
 type MicroPost struct {
-	Title string    `json:"title"`
-	Date  time.Time `json:"pubDate"`
-	Class string    `json:"classname"`
+	Version     int       `json:"version"`
+	Title       string    `json:"title"`
+	Date        time.Time `json:"pubDate"`
+	Class       string    `json:"classname"`
+	ShortDesc   string    `json:"desc,omitempty"`
+	SmallImage  string    `json:"smlImage,omitempty"`
+	BannerImage string    `json:"bannerImage,omitempty"`
 
 	Body    template.HTML `json:"-"`
 	DateStr string        `json:"-"`
 	Pubdate string        `json:"-"`
 }
+
+const microPostVersion = 2
+
+var regFindImage = regexp.MustCompile(`<img[^>]+src=["']([^"']+)["']`)
 
 // //////////////////////////////////////////////////////////////////////////////
 // Blog Listing
@@ -36,6 +45,57 @@ type MicroList []*MicroPost
 func (bl MicroList) Len() int           { return len(bl) }
 func (bl MicroList) Swap(i, j int)      { bl[i], bl[j] = bl[j], bl[i] }
 func (bl MicroList) Less(i, j int) bool { return bl[i].Date.After(bl[j].Date) }
+
+// enrichMicroPost extracts metadata from the body content.
+// Returns true if the post was modified.
+func enrichMicroPost(post *MicroPost) bool {
+	changed := false
+	braw := string(post.Body)
+
+	// Extract first image for social card
+	if post.BannerImage == "" {
+		if loc := regFindImage.FindStringSubmatch(braw); loc != nil {
+			post.BannerImage = cleanImagePath(loc[1])
+			changed = true
+		}
+	}
+
+	// Build short description from plain text body
+	if post.ShortDesc == "" && len(braw) > 0 {
+		p := bluemonday.StripTagsPolicy()
+		plain := p.Sanitize(braw)
+		plain = strings.ReplaceAll(plain, "\n", " ")
+		plain = strings.TrimSpace(plain)
+		if len(plain) > 400 {
+			plain = plain[0:400]
+			// Walk back to word boundary
+			r, size := utf8.DecodeLastRuneInString(plain)
+			for !unicode.IsSpace(r) {
+				if r == utf8.RuneError && (size == 0 || size == 1) {
+					break
+				}
+				plain = plain[:len(plain)-size]
+				r, size = utf8.DecodeLastRuneInString(plain)
+			}
+		}
+		post.ShortDesc = html.UnescapeString(strings.TrimSpace(plain))
+		changed = true
+	}
+
+	// Extract header as title if current title looks like a filename
+	if post.Title != "" {
+		hre := regexp.MustCompile(`<h[1-6]>([^<]*)</h[1-6]>`)
+		if loc := hre.FindStringSubmatchIndex(braw); loc != nil {
+			extracted := strings.Trim(braw[loc[2]:loc[3]], " .\n")
+			if extracted != "" {
+				post.Title = strings.ToUpper(extracted[0:1]) + extracted[1:]
+				changed = true
+			}
+		}
+	}
+
+	return changed
+}
 
 func LoadSingleFile(path string, info os.FileInfo, err error) error {
 	if err != nil {
@@ -51,6 +111,8 @@ func LoadSingleFile(path string, info os.FileInfo, err error) error {
 	title = strings.TrimSuffix(title, ext)
 
 	var newPost MicroPost
+	jsonPath := path + ".json"
+	hasExistingJSON := false
 
 	if ext == ".md" {
 		markdown, err := os.ReadFile(path)
@@ -58,7 +120,6 @@ func LoadSingleFile(path string, info os.FileInfo, err error) error {
 			fmt.Println("Failed to Read: " + path + " - " + err.Error())
 			return err
 		}
-
 		newPost.Body = MarkdownToHTML(markdown)
 
 	} else if ext == ".html" {
@@ -75,19 +136,34 @@ func LoadSingleFile(path string, info os.FileInfo, err error) error {
 		return nil
 	}
 
-	// See if there is a meta data
-	if _, err := os.Stat(path + ".json"); os.IsNotExist(err) {
+	// Load existing JSON if present
+	if _, statErr := os.Stat(jsonPath); statErr == nil {
+		loadJSONBlob(jsonPath, &newPost)
+		hasExistingJSON = true
+	} else {
 		newPost.Title = title
 		newPost.Date = info.ModTime()
-	} else {
-		loadJSONBlob(path+".json", &newPost)
 	}
 
+	// Always recompute derived fields
 	newPost.Pubdate = newPost.Date.Format(longformPubStr)
 	newPost.DateStr = fmt.Sprintf("%d %v %d", newPost.Date.Day(), newPost.Date.Month(), newPost.Date.Year())
+
+	// Enrich if new or outdated version
+	needsSave := !hasExistingJSON
+	if newPost.Version < microPostVersion {
+		enrichMicroPost(&newPost)
+		newPost.Version = microPostVersion
+		needsSave = true
+	}
+
 	genData.Micro = append(genData.Micro, &newPost)
 
-	saveJSONBlob(path+".json", &newPost)
+	if needsSave {
+		log.Printf("Updating micro JSON (v%d): %s\n", newPost.Version, jsonPath)
+		saveJSONBlob(jsonPath, &newPost)
+	}
+
 	return nil
 }
 
@@ -98,12 +174,14 @@ func LoadFromMicroListFolder() {
 	}
 
 	// merge microdata into blog feed
-	re := regexp.MustCompile("/[^a-z0-9]/")
+	reNonAlnum := regexp.MustCompile(`[^a-z0-9 ]+`)
+	reSpaces := regexp.MustCompile(`\s+`)
 
 	for _, v := range genData.Micro {
 		k := strings.ToLower(v.Title)
-		k = re.ReplaceAllString(k, "")
-		k = strings.ReplaceAll(k, "/[^a-z0-9]/g", "")
+		k = reNonAlnum.ReplaceAllString(k, "")  // strip non-alphanumeric (keep spaces)
+		k = strings.TrimSpace(k)
+		k = reSpaces.ReplaceAllString(k, "-")     // spaces to hyphens
 
 		// Extract Header if there is one
 		hre := regexp.MustCompile("<h[0-9]>([^<]*)</h[0-9]>")
@@ -116,12 +194,15 @@ func LoadFromMicroListFolder() {
 		v.Title = strings.Trim(v.Title, " .\n")
 		v.Title = strings.ToUpper(v.Title[0:1]) + v.Title[1:]
 
-		// Convert to Blog
+		// In LoadFromMicroListFolder, inside the merge loop:
 		blogFromMicro := BlogPost{
-			Key:   k,
-			Title: v.Title,
-			Date:  v.Date,
-			Body:  template.HTML(braw),
+			Key:         k,
+			Title:       v.Title,
+			Date:        v.Date,
+			Body:        template.HTML(braw),
+			ShortDesc:   v.ShortDesc,   // already computed
+			BannerImage: v.BannerImage, // already computed
+			SmallImage:  v.SmallImage,  // already computed
 		}
 
 		// strip html from body
@@ -142,8 +223,11 @@ func LoadFromMicroListFolder() {
 				r, size = utf8.DecodeLastRuneInString(plainBody)
 			}
 		}
-		blogFromMicro.ShortDesc = html.UnescapeString(plainBody)
-		blogFromMicro.ShortDesc = strings.ReplaceAll(blogFromMicro.ShortDesc, ".", ". ")
+
+		if blogFromMicro.ShortDesc == "" {
+			blogFromMicro.ShortDesc = html.UnescapeString(plainBody)
+			blogFromMicro.ShortDesc = strings.ReplaceAll(blogFromMicro.ShortDesc, ".", ". ")
+		}
 
 		blogFromMicro.RawCategory = []BlogCat{"micro"}
 		blogFromMicro.Category = []BlogCat{"micro"}

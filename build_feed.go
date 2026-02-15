@@ -72,18 +72,22 @@ var mimeTypes = map[string]string{
 	".jpeg": "image/jpeg",
 	".png":  "image/png",
 	".gif":  "image/gif",
+	".webp": "image/webp",
 	".mp4":  "video/mp4",
 	".webm": "video/webm",
 	// Add more as needed
 }
 
-func createEnclosure(url string) *Enclosure {
-	if url == "" {
+func createEnclosure(rawURL string) *Enclosure {
+	if rawURL == "" {
 		return nil
 	}
 
+	// Normalise the path
+	rawURL = cleanImagePath(rawURL)
+
 	// Determine MIME type based on URL extension
-	ext := filepath.Ext(url)
+	ext := filepath.Ext(rawURL)
 	mimeType, exists := mimeTypes[strings.ToLower(ext)]
 	if !exists {
 		mimeType = "application/octet-stream" // Default MIME type
@@ -91,14 +95,14 @@ func createEnclosure(url string) *Enclosure {
 
 	// Prepare the Enclosure object
 	enc := &Enclosure{
-		URL:  "https://claire-blackshaw.com" + url,
+		URL:  "https://claire-blackshaw.com" + rawURL,
 		Type: mimeType,
 	}
 
 	// Update the length based on the file size
-	info, err := os.Stat("." + url)
+	info, err := os.Stat("." + rawURL)
 	if err != nil {
-		fmt.Println("Error fetching file size:", err, url)
+		fmt.Println("Warning: Could not stat enclosure image:", rawURL, "-", err)
 		enc.Length = "0" // Default to "0" if unable to determine size
 	} else {
 		enc.Length = fmt.Sprintf("%d", info.Size())

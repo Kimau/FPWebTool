@@ -110,7 +110,7 @@ func LoadGalleryFile(path string, info os.FileInfo, err error) error {
 		newPost.Body = template.HTML(`<img class="pixel" src="` + newPost.File + `">`)
 		newPost.Include = append(newPost.Include, filepath.ToSlash(relPath))
 		newPost.PostType = "image"
-	} else if (ext == ".png") || (ext == ".jpg") || (ext == ".jpeg") {
+	} else if (ext == ".png") || (ext == ".jpg") || (ext == ".jpeg") || (ext == ".webp") {
 		newPost.Body = template.HTML(`<img src="` + newPost.File + `">`)
 		newPost.Include = append(newPost.Include, filepath.ToSlash(relPath))
 		newPost.PostType = "image"
