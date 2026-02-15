@@ -22,6 +22,7 @@ import (
 // Updated MicroPost struct
 type MicroPost struct {
 	Version     int       `json:"version"`
+	Key         string    `json:"key,omitempty"`
 	Title       string    `json:"title"`
 	Date        time.Time `json:"pubDate"`
 	Class       string    `json:"classname"`
@@ -37,6 +38,8 @@ type MicroPost struct {
 const microPostVersion = 2
 
 var regFindImage = regexp.MustCompile(`<img[^>]+src=["']([^"']+)["']`)
+var	reNonAlnum = regexp.MustCompile(`[^a-z0-9 ]+`)
+var	reSpaces = regexp.MustCompile(`\s+`)
 
 // //////////////////////////////////////////////////////////////////////////////
 // Blog Listing
@@ -157,6 +160,15 @@ func LoadSingleFile(path string, info os.FileInfo, err error) error {
 		needsSave = true
 	}
 
+	if newPost.Key == "" {
+		k := strings.ToLower(newPost.Title)
+		k = reNonAlnum.ReplaceAllString(k, "")
+		k = strings.TrimSpace(k)
+		k = reSpaces.ReplaceAllString(k, "-")
+		newPost.Key = k
+		needsSave = true
+	}
+
 	genData.Micro = append(genData.Micro, &newPost)
 
 	if needsSave {
@@ -173,15 +185,10 @@ func LoadFromMicroListFolder() {
 		log.Println(err)
 	}
 
-	// merge microdata into blog feed
-	reNonAlnum := regexp.MustCompile(`[^a-z0-9 ]+`)
-	reSpaces := regexp.MustCompile(`\s+`)
 
 	for _, v := range genData.Micro {
-		k := strings.ToLower(v.Title)
-		k = reNonAlnum.ReplaceAllString(k, "")  // strip non-alphanumeric (keep spaces)
-		k = strings.TrimSpace(k)
-		k = reSpaces.ReplaceAllString(k, "-")     // spaces to hyphens
+		// Use persisted key if available, otherwise generate one
+		k := v.Key
 
 		// Extract Header if there is one
 		hre := regexp.MustCompile("<h[0-9]>([^<]*)</h[0-9]>")
