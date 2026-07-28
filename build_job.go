@@ -59,21 +59,12 @@ func (jo *JobList) GeneratePage() {
 	err = jobIndexTemp.Execute(&outBuffer, genData)
 	CheckErrContext(err, "Error in Template ")
 
-	// Write out Frame
-	frameData := &SubPage{
-		Title:   "Games Career",
-		FullURL: "/job/",
-		Content: template.HTML(outBuffer.String()),
-	}
-
-	var outFile *os.File
-	outFile, err = os.Create(publicHtmlRoot + "job/index.html")
-	CheckErrContext(err, "Error in File ")
-
-	err = RootTemp.Execute(outFile, frameData)
-	CheckErrContext(err, "Error in Template ")
-
-	outFile.Close()
+	WritePage(&SubPage{
+		Title:     "Games Career",
+		FullURL:   "/job/",
+		ShortDesc: "The games Claire Blackshaw has shipped, and the studios she shipped them at.",
+		Content:   template.HTML(outBuffer.String()),
+	}, publicHtmlRoot+"job/index.html")
 }
 
 // //////////////////////////////////////////////////////////////////////////////

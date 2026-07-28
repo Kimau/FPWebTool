@@ -77,6 +77,7 @@ func Generate() {
 
 func main() {
 	flagGenSite := flag.Bool("gen", false, "Should Website be generated")
+	flag.BoolVar(&offlineBuild, "offline", false, "Skip network fetches (YouTube thumbnails); use the cache only")
 	flag.Parse()
 
 	log.Println(buildDate)
@@ -84,14 +85,14 @@ func main() {
 	if *flagGenSite {
 		Generate()
 	} else {
-		setupRoot()
+		setupTemplates()
 		generateDataOnly() // only
 		GenerateGallery()
 		GenerateMicro()
 		GenerateFeed()
 	}
 
-	wf := MakeWebFace(":1667", publicHtmlRoot)
+	wf := MakeWebFace("127.0.0.1:1667", publicHtmlRoot)
 	lines := scanForInput()
 
 	for {

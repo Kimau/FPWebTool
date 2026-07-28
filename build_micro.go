@@ -33,18 +33,65 @@ type MicroPost struct {
 	Body    template.HTML `json:"-"`
 	DateStr string        `json:"-"`
 	Pubdate string        `json:"-"`
+
+	// Hero is the resolved share image, derived every build. Drives the thumbnail
+	// on /micro/ and that page's own card. Never persisted - the sidecar's
+	// bannerImage stays the author's field.
+	Hero ResolvedImage `json:"-"`
 }
 
-const microPostVersion = 2
+// microPostVersion gates re-derivation of the sidecar's computed fields. Bumping
+// it rewrites every .md.json on the next build.
+//
+// v3: descriptions are derived from the body *after* its leading heading has been
+// removed. Under v2 they were derived before, so every micro post's
+// og:description opened by repeating its own title word for word.
+const microPostVersion = 3
 
 var regFindImage = regexp.MustCompile(`<img[^>]+src=["']([^"']+)["']`)
-var regMicroHeader = regexp.MustCompile(`<h[1-6]>([^<]*)</h[1-6]>`)
+var regMicroHeader = regexp.MustCompile(`<h[1-6][^>]*>([^<]*)</h[1-6]>`)
 var reNonAlnum = regexp.MustCompile(`[^a-z0-9 ]+`)
 var reSpaces = regexp.MustCompile(`\s+`)
+
+// regMojibake spots the residue of a text tool that wrote UTF-8 out as ASCII: a
+// single em dash becomes eight literal question marks. Ten sidecars carry this,
+// and it was riding straight into og:description while the .md sources were clean
+// all along. Matching it forces a re-derive, so the damage self-heals rather than
+// needing another manual pass.
+var regMojibake = regexp.MustCompile("\\?{3,}|\uFFFD|â€|Ã[\u0080-\u00BF]")
+
+// stripLeadHeading removes the first heading from the body and returns it
+// separately. Both the title and the description are then derived from the
+// result.
+//
+// This used to happen in two places and neither was early enough: enrichMicroPost
+// derived the description from a body that still had its <h1>, and the heading was
+// only removed later, in LoadFromMicroListFolder, on a local copy that never made
+// it back to MicroPost.Body. Hence descriptions that repeated their own title, and
+// /micro/ rendering every heading twice.
+func stripLeadHeading(body string) (heading, rest string) {
+	loc := regMicroHeader.FindStringSubmatchIndex(body)
+	if loc == nil {
+		return "", body
+	}
+
+	heading = strings.Trim(body[loc[2]:loc[3]], " .\n")
+	rest = body[:loc[0]] + body[loc[1]:]
+	return heading, rest
+}
 
 // DateISO is the post date in ISO 8601, as required by <time datetime>.
 func (mp *MicroPost) DateISO() string {
 	return mp.Date.Format(time.RFC3339)
+}
+
+// Link is the post's permalink, in the blog where it is published. /micro/ renders
+// every post in full but had no way to reach one: no entry on that page linked to
+// anything but whatever the author happened to put in the body, so a micro post
+// could be read there and never shared, cited or linked. The blog listing has had
+// this since the beginning.
+func (mp *MicroPost) Link() string {
+	return postPath(mp.Date, mp.Key)
 }
 
 // upperFirst capitalises the first rune. Slicing [0:1] cuts a multi-byte rune in
@@ -70,40 +117,36 @@ func (bl MicroList) Len() int           { return len(bl) }
 func (bl MicroList) Swap(i, j int)      { bl[i], bl[j] = bl[j], bl[i] }
 func (bl MicroList) Less(i, j int) bool { return bl[i].Date.After(bl[j].Date) }
 
-// enrichMicroPost extracts metadata from the body content.
-// Returns true if the post was modified.
-func enrichMicroPost(post *MicroPost) bool {
-	changed := false
+// enrichMicroPost re-derives the sidecar's computed fields from the body, which
+// by this point has already had its leading heading removed.
+//
+// The description is derived data: it is rewritten whenever this runs, i.e. on a
+// version bump or when the stored one is corrupt. A hand-edited desc survives
+// normal builds but not a bump - that is the trade for being able to fix all of
+// them at once.
+//
+// It no longer scrapes an image. Share images are resolved fresh on every build in
+// resolvePostImage, so caching one here bought nothing and froze the result: the
+// version gate meant the old scrape never re-ran once a sidecar was written, and
+// the first-<img> answer was stale the moment the heuristic changed. bannerImage
+// in the sidecar is now purely the author's override.
+func enrichMicroPost(post *MicroPost) {
 	braw := string(post.Body)
-
-	// Extract first image for social card
-	if post.BannerImage == "" {
-		if loc := regFindImage.FindStringSubmatch(braw); loc != nil {
-			post.BannerImage = cleanImagePath(loc[1])
-			changed = true
-		}
+	if len(braw) == 0 {
+		return
 	}
 
-	// Build short description from plain text body
-	if post.ShortDesc == "" && len(braw) > 0 {
-		p := bluemonday.StripTagsPolicy()
-		plain := p.Sanitize(braw)
-		plain = strings.ReplaceAll(plain, "\n", " ")
-		plain = truncateRunes(plain, 400)
-		post.ShortDesc = html.UnescapeString(plain)
-		changed = true
-	}
+	p := bluemonday.StripTagsPolicy()
+	plain := p.Sanitize(braw)
+	plain = html.UnescapeString(plain)
+	plain = reSpaces.ReplaceAllString(plain, " ")
+	post.ShortDesc = truncateRunes(plain, 400)
 
-	// Prefer the body's first heading over the filename-derived title
-	if loc := regMicroHeader.FindStringSubmatchIndex(braw); loc != nil {
-		extracted := strings.Trim(braw[loc[2]:loc[3]], " .\n")
-		if extracted != "" {
-			post.Title = upperFirst(extracted)
-			changed = true
-		}
+	// Three sidecars store this without a leading slash. cleanImagePath forgives
+	// it downstream, but there is no reason to keep writing it out inconsistent.
+	if post.BannerImage != "" {
+		post.BannerImage = cleanImagePath(post.BannerImage)
 	}
-
-	return changed
 }
 
 func LoadSingleFile(path string, info os.FileInfo, err error) error {
@@ -145,22 +188,40 @@ func LoadSingleFile(path string, info os.FileInfo, err error) error {
 		return nil
 	}
 
+	// Lift the heading out before anything reads the body, so the title and the
+	// description are both derived from the same, heading-free text. This is the
+	// ordering that was wrong: it used to happen after enrichment, and on a copy.
+	heading, body := stripLeadHeading(string(newPost.Body))
+	newPost.Body = template.HTML(body)
+
 	// Load existing JSON if present
 	if _, statErr := os.Stat(jsonPath); statErr == nil {
 		loadJSONBlob(jsonPath, &newPost)
 		hasExistingJSON = true
 	} else {
-		newPost.Title = title
 		newPost.Date = info.ModTime()
 	}
+
+	// The body's own heading is the title. The filename is only a fallback for a
+	// post that doesn't have one - microdata/2021/first.md is the only such post,
+	// and its sidecar title is the lowercase filename, so the tidy-up has to apply
+	// whichever source won.
+	if heading != "" {
+		newPost.Title = heading
+	} else if newPost.Title == "" {
+		newPost.Title = title
+	}
+	newPost.Title = upperFirst(strings.Trim(newPost.Title, " .\n"))
 
 	// Always recompute derived fields
 	newPost.Pubdate = newPost.Date.Format(longformPubStr)
 	newPost.DateStr = fmt.Sprintf("%d %v %d", newPost.Date.Day(), newPost.Date.Month(), newPost.Date.Year())
 
-	// Enrich if new or outdated version
+	// Re-derive on a version bump, or when the stored description is visibly
+	// corrupt - ten sidecars carry mojibake from a past ASCII rewrite, and their
+	// .md sources are clean, so a re-derive is all it takes to fix them.
 	needsSave := !hasExistingJSON
-	if newPost.Version < microPostVersion {
+	if newPost.Version < microPostVersion || regMojibake.MatchString(newPost.ShortDesc) {
 		enrichMicroPost(&newPost)
 		newPost.Version = microPostVersion
 		needsSave = true
@@ -191,42 +252,19 @@ func LoadFromMicroListFolder() {
 		log.Println(err)
 	}
 
+	// Micro posts are published as blog posts too, at the same /blog/YYYY/MM/key/
+	// URL, so they flow through BlogPost.GeneratePage and pick up its social card
+	// for free. The heading has already been lifted and the description derived at
+	// load; anything still missing is filled by EnsureShortDesc in resolveAllSocial.
 	for _, v := range genData.Micro {
-		// Use persisted key if available, otherwise generate one
-		k := v.Key
-
-		// Lift the heading out of the body so it isn't repeated under the title
-		braw := string(v.Body)
-		loc := regMicroHeader.FindStringSubmatchIndex(braw)
-		if loc != nil {
-			v.Title = braw[loc[2]:loc[3]]
-			braw = braw[0:loc[0]] + braw[loc[1]:]
-		}
-		v.Title = upperFirst(strings.Trim(v.Title, " .\n"))
-
-		// In LoadFromMicroListFolder, inside the merge loop:
 		blogFromMicro := BlogPost{
-			Key:         k,
+			Key:         v.Key,
 			Title:       v.Title,
 			Date:        v.Date,
-			Body:        template.HTML(braw),
-			ShortDesc:   v.ShortDesc,   // already computed
-			BannerImage: v.BannerImage, // already computed
-			SmallImage:  v.SmallImage,  // already computed
-		}
-
-		// strip html from body
-		plainBody := braw
-		p := bluemonday.StripTagsPolicy()
-		plainBody = p.Sanitize(plainBody)
-		plainBody = strings.ReplaceAll(plainBody, "\n", "")
-		// The old hand-rolled walk-back set size=0 on a decode error and then
-		// looped forever re-slicing nothing.
-		plainBody = truncateRunes(plainBody, 400)
-
-		if blogFromMicro.ShortDesc == "" {
-			blogFromMicro.ShortDesc = html.UnescapeString(plainBody)
-			blogFromMicro.ShortDesc = strings.ReplaceAll(blogFromMicro.ShortDesc, ".", ". ")
+			Body:        v.Body,
+			ShortDesc:   v.ShortDesc,
+			BannerImage: v.BannerImage,
+			SmallImage:  v.SmallImage,
 		}
 
 		blogFromMicro.RawCategory = []BlogCat{"micro"}
@@ -277,22 +315,22 @@ func GenerateMicro() {
 	err = microTemp.Execute(&outBuffer, genData)
 	CheckErrContext(err, "Error in Template ")
 
-	// Write out Frame
-	frameData := &SubPage{
-		Title:   "Micro Posts",
-		FullURL: "/micro/",
-		Content: template.HTML(outBuffer.String()),
+	const desc = "Short posts and half-thoughts from Claire Blackshaw - too big for a tweet, too small for a blog post."
+
+	// The newest micro with a real image, which is not always the newest post.
+	var newest ResolvedImage
+	for _, mp := range genData.Micro {
+		if mp.Hero.OK() {
+			newest = mp.Hero
+			break
+		}
 	}
 
-	err = os.MkdirAll(publicHtmlRoot+"micro", 0777)
-	CheckErr(err)
-
-	var outFile *os.File
-	outFile, err = os.Create(publicHtmlRoot + "micro/index.html")
-	CheckErrContext(err, "Error in File ")
-
-	err = RootTemp.Execute(outFile, frameData)
-	CheckErrContext(err, "Error in Template ")
-
-	outFile.Close()
+	WritePage(&SubPage{
+		Title:     "Micro Posts",
+		FullURL:   "/micro/",
+		ShortDesc: desc,
+		Content:   template.HTML(outBuffer.String()),
+		Social:    listingCard("Micro Posts", desc, newest),
+	}, publicHtmlRoot+"micro/index.html")
 }

@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"log"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -37,24 +38,32 @@ var (
 //
 
 func init() {
-	var err error
-
 	regUrlSrc = regexp.MustCompile(`src="([^"]+)"`)
 	// [^<]+ rather than [^"]+ so a page with several headings doesn't match from
 	// the first opening tag all the way to the last closing one.
 	regHeader = regexp.MustCompile(`<h(1|2|3)>([^<]+)</h(1|2|3)>`)
 	gallerySrcDir = filepath.Clean("./gallery")
-
-	galleryTemp, err = template.ParseFiles("Templates/gallery.html")
-	CheckErr(err)
-
-	galSingleTemp, err = template.ParseFiles("Templates/galsingle.html")
-	CheckErr(err)
 }
 
 // DateISO is the post date in ISO 8601, as required by <time datetime>.
 func (gp *GalleryPost) DateISO() string {
 	return gp.Date.Format(time.RFC3339)
+}
+
+// HeroImage resolves the gallery post's own picture into a share image. Include[0]
+// is the thumbnail gallery.html already renders, so this costs nothing new - it
+// was simply never wired to og:image, and gallery pages are the one page type that
+// is nothing but a picture.
+//
+// Include entries come in two shapes: bare relative for images ("Dreams/x.jpg")
+// and leading-slash for markdown and html posts ("/Dreams/x.png"). path.Join
+// normalises both, which also removes the double slash the template produces.
+// Video posts resolve to nothing, since an .mp4 is not a usable card image.
+func (gp *GalleryPost) HeroImage() ResolvedImage {
+	if len(gp.Include) == 0 {
+		return ResolvedImage{}
+	}
+	return validateImage(path.Join("/gallery", gp.Include[0]), gp.Brief, srcGallery)
 }
 
 // //////////////////////////////////////////////////////////////////////////////
@@ -239,11 +248,6 @@ func GenerateGallery() {
 		}
 
 		{
-			// Make Single
-			var outFile *os.File
-			outFile, err = os.Create(tarPath)
-			CheckErrContext(err, "Error in File ")
-
 			prevLink := "/gallery/"
 			if (i - 1) >= 0 {
 				prevLink = "/gallery/" + genData.Gallery[i-1].Link
@@ -262,42 +266,46 @@ func GenerateGallery() {
 			}{g, prevLink, nextLink})
 			CheckErrContext(err, "Error in Template ")
 
-			// Write out Frame
-			frameData := &SubPage{
-				Title:   "Gallery: " + g.DateStr,
-				FullURL: "/gallery/" + g.Link,
-				Content: template.HTML(outBuffer.String()),
+			title := "Gallery: " + g.DateStr
+			desc := g.Brief
+			if strings.TrimSpace(desc) == "" {
+				desc = "A picture from Claire Blackshaw's sketchbook, posted " + g.DateStr + "."
 			}
+			desc = truncateRunes(desc, 200)
 
-			err = RootTemp.Execute(outFile, frameData)
-			CheckErrContext(err, "Error in Template ")
-
-			outFile.Close()
+			WritePage(&SubPage{
+				Title:     title,
+				FullURL:   "/gallery/" + g.Link,
+				ShortDesc: desc,
+				Content:   template.HTML(outBuffer.String()),
+				Social:    listingCard(title, desc, g.HeroImage()),
+			}, tarPath)
 		}
 	}
 
 	// Make Index
 	{
-		var outFile *os.File
-		outFile, err = os.Create(publicHtmlRoot + "gallery/index.html")
-		CheckErrContext(err, "Error in File ")
-
-		// Make Template
 		var outBuffer bytes.Buffer
 		err = galleryTemp.Execute(&outBuffer, genData)
 		CheckErrContext(err, "Error in Template ")
 
-		// Write out Frame
-		frameData := &SubPage{
-			Title:   "Gallery Posts",
-			FullURL: "/gallery/",
-			Content: template.HTML(outBuffer.String()),
+		const desc = "Sketches, screenshots and experiments from Claire Blackshaw."
+
+		var newest ResolvedImage
+		for _, g := range genData.Gallery {
+			if img := g.HeroImage(); img.OK() {
+				newest = img
+				break
+			}
 		}
 
-		err = RootTemp.Execute(outFile, frameData)
-		CheckErrContext(err, "Error in Template ")
-
-		outFile.Close()
+		WritePage(&SubPage{
+			Title:     "Gallery Posts",
+			FullURL:   "/gallery/",
+			ShortDesc: desc,
+			Content:   template.HTML(outBuffer.String()),
+			Social:    listingCard("Gallery Posts", desc, newest),
+		}, publicHtmlRoot+"gallery/index.html")
 	}
 
 	genData.ShortGallery = nil

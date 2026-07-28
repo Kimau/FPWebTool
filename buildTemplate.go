@@ -25,37 +25,9 @@ func AbsURL(path string) string {
 	return siteBaseURL + path
 }
 
-type SubPage struct {
-	Title     string        `json:"title"`
-	Content   template.HTML `json:"content"`
-	ShortDesc string
-	FullURL   string
-	Twitter   *TwitterCard
-}
-
-// Canonical is the absolute URL for this page, used by <link rel="canonical">
-// and og:url. Both are ignored by crawlers if given a relative path.
-func (sp *SubPage) Canonical() string {
-	return AbsURL(sp.FullURL)
-}
-
-// AbsImage is the absolute URL of the card image. Twitter and Facebook both
-// silently drop relative image paths.
-func (tc *TwitterCard) AbsImage() string {
-	return AbsURL(tc.Image)
-}
-
 type WebLink struct {
 	Title string `json:"name"`
 	Link  string `json:"url"`
-}
-
-type TwitterCard struct {
-	Card        string
-	Site        string
-	Title       string
-	Description string
-	Image       string
 }
 
 type GenerateData struct { // Loaded from files and Generated
@@ -113,20 +85,11 @@ func GenerateAbout() {
 	err = aboutIndexTemp.Execute(&outBuffer, genData)
 	CheckErrContext(err, "Error in Template ")
 
-	// Write out Frame
-	frameData := &SubPage{
+	WritePage(&SubPage{
 		Title:   "Claire Blackshaw",
 		FullURL: "/",
 		Content: template.HTML(outBuffer.String()),
-	}
-
-	f, fileErr := os.Create(publicHtmlRoot + "index.html")
-	CheckErrContext(fileErr, "Error in File ")
-
-	err = RootTemp.Execute(f, frameData)
-	CheckErr(err)
-
-	f.Close()
+	}, publicHtmlRoot+"index.html")
 }
 
 // //////////////////////////////////////////////////////////////////////////////
@@ -153,6 +116,12 @@ func generateDataOnly() {
 	genData.Hobby.LoadFromFile()
 	LoadFromMicroListFolder()
 	LoadFromGalleryListFolder()
+
+	// Share images and descriptions are resolved here, before any generator runs,
+	// so that every consumer sees the same answer. Note this is the one part of
+	// loading that can touch the network, to fetch YouTube thumbnails it has not
+	// cached yet; it degrades to the site default rather than failing.
+	resolveAllSocial()
 
 	// Build Game List
 	genData.GameList = BuildFromJobs(&genData.Job)
@@ -183,16 +152,41 @@ func buildShortLists() {
 	genData.ShortFeed = append(BlogList{}, genData.Feed[newest:rest]...)
 }
 
-func setupRoot() {
+// setupTemplates parses every template that outlives a single generator call.
+// These used to be parsed in package init(), which meant importing the package at
+// all required the process to be sitting in the repo root with Templates/ present
+// - so the package could not be tested, and a missing template killed the process
+// before main() got a chance to say anything useful. Both callers of this (the
+// -gen path and the plain startup path) run it before any generator.
+func setupTemplates() {
 	var err error
+
 	RootTemp, err = template.ParseFiles("Templates/root.html")
+	CheckErr(err)
+
+	blogIndexTemp, err = template.ParseFiles("Templates/blogindex.html")
+	CheckErr(err)
+
+	blogTemp, err = template.ParseFiles("Templates/blogpost.html")
+	CheckErr(err)
+
+	blogCatTemp, err = template.ParseFiles("Templates/blogcat.html")
+	CheckErr(err)
+
+	galleryTemp, err = template.ParseFiles("Templates/gallery.html")
+	CheckErr(err)
+
+	galSingleTemp, err = template.ParseFiles("Templates/galsingle.html")
+	CheckErr(err)
+
+	hobbyIndexTemp, err = template.ParseFiles("Templates/projects.html")
 	CheckErr(err)
 }
 
 func genWebsite() {
-	generateDataOnly()
+	setupTemplates()
 
-	setupRoot()
+	generateDataOnly()
 
 	log.Println("Generating Gallery")
 	GenerateGallery()

@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"html/template"
-	"log"
 	"os"
 )
 
@@ -22,13 +21,6 @@ type HobbyProject struct {
 var (
 	hobbyIndexTemp *template.Template
 )
-
-func init() {
-	var err error
-
-	hobbyIndexTemp, err = template.ParseFiles("Templates/projects.html")
-	CheckErr(err)
-}
 
 // //////////////////////////////////////////////////////////////////////////////
 // HobbyList
@@ -56,26 +48,14 @@ func (hl *HobbyList) GeneratePage() {
 	err = hobbyIndexTemp.Execute(&outBuffer, hl)
 	CheckErr(err)
 
-	// Write out Frame. This page is written to /projects/, so FullURL has to say
-	// /projects/ - it feeds the canonical tag and the og:url.
-	frameData := &SubPage{
+	// Written to /projects/, so FullURL has to say /projects/ - it feeds the
+	// canonical tag and the og:url.
+	WritePage(&SubPage{
 		Title:     "Experiments",
 		FullURL:   "/projects/",
 		ShortDesc: "Hobby projects, experiments and game jam entries by Claire Blackshaw.",
 		Content:   template.HTML(outBuffer.String()),
-	}
-
-	os.MkdirAll(publicHtmlRoot+"projects/", 0777)
-
-	f, fileErr := os.Create(publicHtmlRoot + "projects/index.html")
-	if fileErr != nil {
-		log.Fatalln("Error in File ", fileErr)
-	}
-
-	err = RootTemp.Execute(f, frameData)
-	CheckErr(err)
-
-	f.Close()
+	}, publicHtmlRoot+"projects/index.html")
 }
 
 // //////////////////////////////////////////////////////////////////////////////

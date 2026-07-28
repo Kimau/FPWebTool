@@ -63,7 +63,7 @@ func blogPostToItem(post *BlogPost) Item {
 		Guid:        AbsURL(post.Link),
 		PubDate:     post.Pubdate,
 		Description: post.ShortDesc,
-		Enclosure:   createEnclosure(post.BannerImage),
+		Enclosure:   createEnclosure(post.Hero),
 	}
 }
 
@@ -78,32 +78,31 @@ var mimeTypes = map[string]string{
 	// Add more as needed
 }
 
-func createEnclosure(rawURL string) *Enclosure {
-	if rawURL == "" {
+// createEnclosure builds the RSS enclosure from an already-resolved image, so it
+// inherits the same validation, casing and percent-encoding as the social card.
+//
+// A post with no real image gets no enclosure at all. Substituting the site
+// default here would put the same logo on every item in the feed, which is worse
+// than leaving it out - this is the one consumer that should not see the default.
+func createEnclosure(img ResolvedImage) *Enclosure {
+	if !img.OK() {
 		return nil
 	}
 
-	// Normalise the path
-	rawURL = cleanImagePath(rawURL)
-
-	// Determine MIME type based on URL extension
-	ext := filepath.Ext(rawURL)
-	mimeType, exists := mimeTypes[strings.ToLower(ext)]
+	mimeType, exists := mimeTypes[strings.ToLower(filepath.Ext(img.Path))]
 	if !exists {
-		mimeType = "application/octet-stream" // Default MIME type
+		mimeType = "application/octet-stream"
 	}
 
-	// Prepare the Enclosure object
 	enc := &Enclosure{
-		URL:  AbsURL(rawURL),
+		URL:  img.AbsPath(),
 		Type: mimeType,
 	}
 
-	// Update the length based on the file size
-	info, err := os.Stat("." + rawURL)
+	info, err := os.Stat("." + img.Path)
 	if err != nil {
-		fmt.Println("Warning: Could not stat enclosure image:", rawURL, "-", err)
-		enc.Length = "0" // Default to "0" if unable to determine size
+		fmt.Println("Warning: Could not stat enclosure image:", img.Path, "-", err)
+		enc.Length = "0"
 	} else {
 		enc.Length = fmt.Sprintf("%d", info.Size())
 	}

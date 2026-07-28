@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"html"
 	"html/template"
 	"io/ioutil"
 	"log"
@@ -28,9 +29,15 @@ type BlogPost struct {
 	RawCategory []BlogCat `json:"category"`
 	Class       string    `json:"classname"`
 
-	Image       string `json:"image,omitempty"`
-	ImageWidth  string `json:"imageWidth,omitempty"`
-	ImageHeight string `json:"imageHeight,omitempty"`
+	// Hero is the resolved share image, derived every build and never persisted.
+	// The zero value means no real image was found, which is what suppresses the
+	// header image and the listing thumbnail; the site default is substituted
+	// only in SubPage.Normalise. It replaces Image/ImageWidth/ImageHeight, which
+	// were computed here and then never reached <head> at all.
+	//
+	// json:"-" matters: blogData.js is hand-maintained and the admin webface can
+	// still call SaveToFile, so derived state must not leak back into the source.
+	Hero ResolvedImage `json:"-"`
 
 	Category []BlogCat     `json:"-"`
 	Date     time.Time     `json:"-"`
@@ -54,8 +61,6 @@ const longformPubStr = "Mon, 02 Jan 2006 15:04:05 -0700"
 //
 
 func init() {
-	var err error
-
 	// Drop punctuation but keep digits, then collapse whitespace runs into a
 	// single underscore. The old version stripped digits and spaces in one pass,
 	// which silently turned "Html5" into "Html" and made the space rule dead.
@@ -63,15 +68,6 @@ func init() {
 	regUrlSpace = regexp.MustCompile(`\s+`)
 	regLegacyUrlChar = regexp.MustCompile(`[^A-Za-z]`)
 	regStripMarkup = regexp.MustCompile("<[^<>]*>")
-
-	blogIndexTemp, err = template.ParseFiles("Templates/blogindex.html")
-	CheckErr(err)
-
-	blogTemp, err = template.ParseFiles("Templates/blogpost.html")
-	CheckErr(err)
-
-	blogCatTemp, err = template.ParseFiles("Templates/blogcat.html")
-	CheckErr(err)
 }
 
 // truncateRunes cuts s to at most maxBytes without splitting a UTF-8 rune, then
@@ -143,20 +139,15 @@ func (bl *BlogList) GeneratePage() {
 	err := blogIndexTemp.Execute(&outBuffer, bl)
 	CheckErrContext(err, "Error in Template ")
 
-	// Write out Frame
-	frameData := &SubPage{
-		Title:   "Blog",
-		FullURL: "/blog/",
-		Content: template.HTML(outBuffer.String()),
-	}
+	const desc = "Writing by Claire Blackshaw on game development, engines, VR and roleplaying."
 
-	f, fileErr := os.Create(publicHtmlRoot + "blog/index.html")
-	CheckErrContext(fileErr, "Error in File ")
-
-	err = RootTemp.Execute(f, frameData)
-	CheckErr(err)
-
-	f.Close()
+	WritePage(&SubPage{
+		Title:     "Blog",
+		FullURL:   "/blog/",
+		ShortDesc: desc,
+		Content:   template.HTML(outBuffer.String()),
+		Social:    listingCard("Blog", desc, firstHero(*bl)),
+	}, publicHtmlRoot+"blog/index.html")
 }
 
 // //////////////////////////////////////////////////////////////////////////////
@@ -204,6 +195,33 @@ func (bp *BlogPost) AbsLink() string {
 	return AbsURL(bp.Link)
 }
 
+// EnsureShortDesc derives a description from the body when the author has not
+// written one. Called from resolveAllSocial, i.e. before any template executes:
+// this used to run six lines *after* blogpost.html was rendered, so a post
+// without a desc shipped an empty itemprop="description" while <head> got the
+// derived one. blogindex.html, blogcat.html, about.html and rss.xml all read this
+// same field, so it has to be settled before any of them run.
+func (bp *BlogPost) EnsureShortDesc() {
+	if len(strings.TrimSpace(bp.ShortDesc)) >= 4 {
+		return
+	}
+
+	sum := regStripMarkup.ReplaceAllString(string(bp.Body), " ")
+	sum = html.UnescapeString(sum)
+	// Stripping tags leaves runs of spaces where the markup was, and raw entities
+	// where the text had them; neither belongs in a card.
+	sum = regUrlSpace.ReplaceAllString(sum, " ")
+	bp.ShortDesc = truncateRunes(strings.TrimSpace(sum), 400)
+}
+
+// postPath is where a post lives. Micro posts share it: they are published into
+// the blog at the same address, which is what lets /micro/ link to them. Spelt
+// once so the two cannot drift - MicroPost.Link has to agree with this exactly or
+// the micro listing links to 404s.
+func postPath(date time.Time, key string) string {
+	return fmt.Sprintf("/blog/%04d/%02d/%s/", date.Year(), date.Month(), key)
+}
+
 func (bp *BlogPost) FixupDateFromPubStr() {
 	var err error
 
@@ -213,96 +231,34 @@ func (bp *BlogPost) FixupDateFromPubStr() {
 	}
 
 	bp.DateStr = fmt.Sprintf("%d %v %d", bp.Date.Day(), bp.Date.Month(), bp.Date.Year())
-	bp.Link = fmt.Sprintf("/blog/%04d/%02d/%s/", bp.Date.Year(), bp.Date.Month(), bp.Key)
+	bp.Link = postPath(bp.Date, bp.Key)
 }
 
 func (bp *BlogPost) SetNewPubDate(newPubDate time.Time) {
 	bp.Date = newPubDate
 	bp.DateStr = fmt.Sprintf("%d %v %d", bp.Date.Day(), bp.Date.Month(), bp.Date.Year())
-	bp.Link = fmt.Sprintf("/blog/%04d/%02d/%s/", bp.Date.Year(), bp.Date.Month(), bp.Key)
+	bp.Link = postPath(bp.Date, bp.Key)
 	bp.Pubdate = bp.Date.Format(longformPubStr)
 }
 
+// GeneratePage writes one post. Image resolution and description derivation have
+// both moved to resolveAllSocial, which runs at load; by the time this is called
+// bp.Hero and bp.ShortDesc are settled and shared with the listings, the feed and
+// the front page.
 func (bp *BlogPost) GeneratePage() {
-	var err error
-
 	log.Println(bp.Link)
 
-	err = os.MkdirAll(publicHtmlRoot+bp.Link, 0777)
-	CheckErrContext(err, "Error in Mkdir ")
-
-	// Get Banner Image Size (if I have one)
-	if len(bp.BannerImage) > 3 {
-		bp.BannerImage = cleanImagePath(bp.BannerImage)
-		w, h, e := getImageDimension("." + bp.BannerImage)
-		if e != nil {
-			log.Println("Warning: Error getting Banner:", bp.Title, "\n>", bp.BannerImage, "\n>", e)
-			// Fall through to SmallImage or default
-		} else {
-			bp.Image = bp.BannerImage
-			bp.ImageWidth = fmt.Sprintf("%d", w)
-			bp.ImageHeight = fmt.Sprintf("%d", h)
-		}
-	}
-
-	if bp.Image == "" && len(bp.SmallImage) > 3 {
-		bp.SmallImage = cleanImagePath(bp.SmallImage)
-		bp.Image = bp.SmallImage
-		bp.ImageWidth, bp.ImageHeight = "120", "120"
-	}
-
-	if bp.Image == "" {
-		bp.Image = "/images/fp_twitter_tiny.png"
-		bp.ImageWidth, bp.ImageHeight = "120", "120"
-	}
-
 	var outBuffer bytes.Buffer
-	err = blogTemp.Execute(&outBuffer, bp)
+	err := blogTemp.Execute(&outBuffer, bp)
 	CheckErr(err)
 
-	blogBody := template.HTML(outBuffer.String())
-
-	// Twitter Card
-	if len(bp.ShortDesc) < 4 {
-		// Build Desc
-		sum := regStripMarkup.ReplaceAllString(string(bp.Body), " ")
-		bp.ShortDesc = truncateRunes(sum, 200)
-	}
-
-	tc := &TwitterCard{
-		Card:        "summary",
-		Site:        "@EvilKimau",
-		Title:       bp.Title,
-		Description: bp.ShortDesc,
-		Image:       "/images/fp_twitter_tiny.png",
-	}
-
-	if len(bp.BannerImage) > 3 {
-		tc.Card = "summary_large_image"
-		tc.Image = bp.BannerImage
-	} else if len(bp.SmallImage) > 3 {
-		tc.Image = bp.SmallImage
-	}
-
-	// Write out Frame
-	frameData := &SubPage{
+	WritePage(&SubPage{
 		Title:     bp.Title,
 		FullURL:   bp.Link,
 		ShortDesc: bp.ShortDesc,
-		Content:   blogBody,
-		Twitter:   tc,
-	}
-
-	f, fileErr := os.Create(publicHtmlRoot + bp.Link + "index.html")
-	if fileErr != nil {
-		log.Fatalln("Error in File ", fileErr)
-	}
-
-	// Note: Don't like the fact we reference RootTemp here
-	err = RootTemp.Execute(f, frameData)
-	CheckErr(err)
-
-	f.Close()
+		Content:   template.HTML(outBuffer.String()),
+		Social:    bp.SocialCard(),
+	}, publicHtmlRoot+bp.Link+"index.html")
 }
 
 // //////////////////////////////////////////////////////////////////////////////
@@ -416,28 +372,22 @@ func WriteRedirectStub(fromPath string, dest string) {
 }
 
 func GenerateBlogCatergoryPage(cat BlogCat, blist *BlogList) {
-	var err error
-	var outBuffer bytes.Buffer
+	// catMap is filled in load order, so without this the category listings come
+	// out in semi-arbitrary order - and the card wants the newest post's image.
+	sort.Sort(*blist)
 
-	err = blogCatTemp.Execute(&outBuffer, blist)
+	var outBuffer bytes.Buffer
+	err := blogCatTemp.Execute(&outBuffer, blist)
 	CheckErrContext(err, "Error in Template ")
 
-	// Write out Frame
-	frameData := &SubPage{
-		Title:     "Blog - " + string(cat),
+	title := "Blog - " + string(cat)
+	desc := "Posts by Claire Blackshaw tagged " + string(cat) + "."
+
+	WritePage(&SubPage{
+		Title:     title,
 		FullURL:   "/blog/cat/" + cat.UrlVer() + "/",
-		ShortDesc: "Posts by Claire Blackshaw tagged " + string(cat) + ".",
+		ShortDesc: desc,
 		Content:   template.HTML(outBuffer.String()),
-	}
-
-	err = os.MkdirAll(publicHtmlRoot+"blog/cat/"+cat.UrlVer(), 0777)
-	CheckErrContext(err, "Error in Mkdir ")
-
-	f, fileErr := os.Create(publicHtmlRoot + "blog/cat/" + cat.UrlVer() + "/index.html")
-	CheckErrContext(fileErr, "Error in File ")
-
-	err = RootTemp.Execute(f, frameData)
-	CheckErr(err)
-
-	f.Close()
+		Social:    listingCard(title, desc, firstHero(*blist)),
+	}, publicHtmlRoot+"blog/cat/"+cat.UrlVer()+"/index.html")
 }
