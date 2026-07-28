@@ -147,13 +147,24 @@ func (wf *WebFace) MakeTemplates() {
 	//
 }
 
-var validBlogPath = regexp.MustCompile(`^/admin/blog/([a-zA-Z0-9\\-]+)/(edit|save|view)$`)
+// Post keys contain underscores (better_pr, shipping_vr_godot). The old class
+// was [a-zA-Z0-9\\-], which allowed a literal backslash but not an underscore,
+// so those posts fell through and the nil submatch panicked below.
+var validBlogPath = regexp.MustCompile(`^/admin/blog/([a-zA-Z0-9_-]+)/(edit|save|view)$`)
 
 func (wf *WebFace) ServeBlogPage(w http.ResponseWriter, req *http.Request) {
 	m := validBlogPath.FindStringSubmatch(req.URL.Path)
+	if m == nil {
+		http.Error(w, "Not a valid blog admin path: "+req.URL.Path, http.StatusNotFound)
+		return
+	}
 
 	// Get Page
 	b := genData.Feed.Get(m[1])
+	if b == nil {
+		http.Error(w, "No post with key "+m[1], http.StatusNotFound)
+		return
+	}
 
 	switch m[2] {
 	case "edit":

@@ -52,9 +52,11 @@ func CopyFileLazy(src string, dest string) (int64, error) {
 		return 0, err
 	}
 
+	// Was "err != nil && destInfo != nil", which can never hold: when Stat fails
+	// destInfo is nil. The lazy skip never fired and every file was recopied.
 	destInfo, err := os.Stat(dest)
-	if err != nil && destInfo != nil {
-		if (destInfo.ModTime() == srcInfo.ModTime()) && (destInfo.Size() == srcInfo.Size()) {
+	if err == nil {
+		if destInfo.ModTime().Equal(srcInfo.ModTime()) && (destInfo.Size() == srcInfo.Size()) {
 			return destInfo.Size(), nil
 		}
 	}
@@ -81,7 +83,15 @@ func CopyFileLazy(src string, dest string) (int64, error) {
 	if nBytes != srcInfo.Size() {
 		return 0, fmt.Errorf("failed to copy %d != %d", nBytes, srcInfo.Size())
 	}
-	return nBytes, err
+
+	// Carry the mtime across, otherwise the lazy check above can never match and
+	// the whole 122MB of images is rewritten on every build.
+	destination.Close()
+	if err := os.Chtimes(dest, srcInfo.ModTime(), srcInfo.ModTime()); err != nil {
+		fmt.Println("Warning: could not set mtime on " + dest)
+	}
+
+	return nBytes, nil
 
 }
 

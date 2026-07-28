@@ -59,8 +59,8 @@ type Enclosure struct {
 func blogPostToItem(post *BlogPost) Item {
 	return Item{
 		Title:       post.Title,
-		Link:        "https://claire-blackshaw.com" + post.Link,
-		Guid:        "https://claire-blackshaw.com" + post.Link,
+		Link:        AbsURL(post.Link),
+		Guid:        AbsURL(post.Link),
 		PubDate:     post.Pubdate,
 		Description: post.ShortDesc,
 		Enclosure:   createEnclosure(post.BannerImage),
@@ -95,7 +95,7 @@ func createEnclosure(rawURL string) *Enclosure {
 
 	// Prepare the Enclosure object
 	enc := &Enclosure{
-		URL:  "https://claire-blackshaw.com" + rawURL,
+		URL:  AbsURL(rawURL),
 		Type: mimeType,
 	}
 
@@ -121,14 +121,14 @@ func GenerateFeed() error {
 		XMLNS:   "http://www.w3.org/2005/Atom",
 		Channel: Channel{
 			Title: "CBs GameDev Blog",
-			Link:  "https://claire-blackshaw.com/",
+			Link:  siteBaseURL + "/",
 			Image: ImageHeader{
-				URL:   "https://claire-blackshaw.com/images/TitleBoard_Square.png",
-				Link:  "https://claire-blackshaw.com/",
+				URL:   siteBaseURL + "/images/TitleBoard_Square.png",
+				Link:  siteBaseURL + "/",
 				Title: "CBs GameDev Blog",
 			},
 			AtomLink: AtomLink{
-				Href: "https://claire-blackshaw.com/rss.xml",
+				Href: siteBaseURL + "/rss.xml",
 				Rel:  "self",
 				Type: "application/rss+xml",
 			},
@@ -157,10 +157,11 @@ func GenerateFeed() error {
 	}
 	defer file.Close()
 
-	_, err = file.WriteString(`<?xml version="1.0" encoding="UTF-8"?>` + "\n")
+	if _, err = file.WriteString(`<?xml version="1.0" encoding="UTF-8"?>` + "\n"); err != nil {
+		return fmt.Errorf("error writing to file: %w", err)
+	}
 
-	_, err = file.Write(xmlData)
-	if err != nil {
+	if _, err = file.Write(xmlData); err != nil {
 		return fmt.Errorf("error writing to file: %w", err)
 	}
 

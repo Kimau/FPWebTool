@@ -38,8 +38,29 @@ type MicroPost struct {
 const microPostVersion = 2
 
 var regFindImage = regexp.MustCompile(`<img[^>]+src=["']([^"']+)["']`)
-var	reNonAlnum = regexp.MustCompile(`[^a-z0-9 ]+`)
-var	reSpaces = regexp.MustCompile(`\s+`)
+var regMicroHeader = regexp.MustCompile(`<h[1-6]>([^<]*)</h[1-6]>`)
+var reNonAlnum = regexp.MustCompile(`[^a-z0-9 ]+`)
+var reSpaces = regexp.MustCompile(`\s+`)
+
+// DateISO is the post date in ISO 8601, as required by <time datetime>.
+func (mp *MicroPost) DateISO() string {
+	return mp.Date.Format(time.RFC3339)
+}
+
+// upperFirst capitalises the first rune. Slicing [0:1] cuts a multi-byte rune in
+// half, and panics outright on an empty string.
+func upperFirst(s string) string {
+	if s == "" {
+		return s
+	}
+
+	r, size := utf8.DecodeRuneInString(s)
+	if r == utf8.RuneError && size <= 1 {
+		return s
+	}
+
+	return string(unicode.ToUpper(r)) + s[size:]
+}
 
 // //////////////////////////////////////////////////////////////////////////////
 // Blog Listing
@@ -68,32 +89,17 @@ func enrichMicroPost(post *MicroPost) bool {
 		p := bluemonday.StripTagsPolicy()
 		plain := p.Sanitize(braw)
 		plain = strings.ReplaceAll(plain, "\n", " ")
-		plain = strings.TrimSpace(plain)
-		if len(plain) > 400 {
-			plain = plain[0:400]
-			// Walk back to word boundary
-			r, size := utf8.DecodeLastRuneInString(plain)
-			for !unicode.IsSpace(r) {
-				if r == utf8.RuneError && (size == 0 || size == 1) {
-					break
-				}
-				plain = plain[:len(plain)-size]
-				r, size = utf8.DecodeLastRuneInString(plain)
-			}
-		}
-		post.ShortDesc = html.UnescapeString(strings.TrimSpace(plain))
+		plain = truncateRunes(plain, 400)
+		post.ShortDesc = html.UnescapeString(plain)
 		changed = true
 	}
 
-	// Extract header as title if current title looks like a filename
-	if post.Title != "" {
-		hre := regexp.MustCompile(`<h[1-6]>([^<]*)</h[1-6]>`)
-		if loc := hre.FindStringSubmatchIndex(braw); loc != nil {
-			extracted := strings.Trim(braw[loc[2]:loc[3]], " .\n")
-			if extracted != "" {
-				post.Title = strings.ToUpper(extracted[0:1]) + extracted[1:]
-				changed = true
-			}
+	// Prefer the body's first heading over the filename-derived title
+	if loc := regMicroHeader.FindStringSubmatchIndex(braw); loc != nil {
+		extracted := strings.Trim(braw[loc[2]:loc[3]], " .\n")
+		if extracted != "" {
+			post.Title = upperFirst(extracted)
+			changed = true
 		}
 	}
 
@@ -185,21 +191,18 @@ func LoadFromMicroListFolder() {
 		log.Println(err)
 	}
 
-
 	for _, v := range genData.Micro {
 		// Use persisted key if available, otherwise generate one
 		k := v.Key
 
-		// Extract Header if there is one
-		hre := regexp.MustCompile("<h[0-9]>([^<]*)</h[0-9]>")
+		// Lift the heading out of the body so it isn't repeated under the title
 		braw := string(v.Body)
-		loc := hre.FindStringSubmatchIndex(braw)
+		loc := regMicroHeader.FindStringSubmatchIndex(braw)
 		if loc != nil {
 			v.Title = braw[loc[2]:loc[3]]
 			braw = braw[0:loc[0]] + braw[loc[1]:]
 		}
-		v.Title = strings.Trim(v.Title, " .\n")
-		v.Title = strings.ToUpper(v.Title[0:1]) + v.Title[1:]
+		v.Title = upperFirst(strings.Trim(v.Title, " .\n"))
 
 		// In LoadFromMicroListFolder, inside the merge loop:
 		blogFromMicro := BlogPost{
@@ -217,19 +220,9 @@ func LoadFromMicroListFolder() {
 		p := bluemonday.StripTagsPolicy()
 		plainBody = p.Sanitize(plainBody)
 		plainBody = strings.ReplaceAll(plainBody, "\n", "")
-		if len(plainBody) > 400 {
-			plainBody = plainBody[0:400]
-
-			r, size := utf8.DecodeLastRuneInString(plainBody)
-			for !unicode.IsSpace(r) {
-				if r == utf8.RuneError && (size == 0 || size == 1) {
-					size = 0
-				}
-
-				plainBody = plainBody[:len(plainBody)-size]
-				r, size = utf8.DecodeLastRuneInString(plainBody)
-			}
-		}
+		// The old hand-rolled walk-back set size=0 on a decode error and then
+		// looped forever re-slicing nothing.
+		plainBody = truncateRunes(plainBody, 400)
 
 		if blogFromMicro.ShortDesc == "" {
 			blogFromMicro.ShortDesc = html.UnescapeString(plainBody)

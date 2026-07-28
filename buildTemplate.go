@@ -7,7 +7,23 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"strings"
 )
+
+// AbsURL turns a site-relative path into a fully-qualified URL on the canonical
+// origin. Anything already absolute is passed through untouched. Required for
+// canonical tags, og:url and sitemap <loc>, all of which reject relative paths.
+func AbsURL(path string) string {
+	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
+		return path
+	}
+
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+
+	return siteBaseURL + path
+}
 
 type SubPage struct {
 	Title     string        `json:"title"`
@@ -15,6 +31,18 @@ type SubPage struct {
 	ShortDesc string
 	FullURL   string
 	Twitter   *TwitterCard
+}
+
+// Canonical is the absolute URL for this page, used by <link rel="canonical">
+// and og:url. Both are ignored by crawlers if given a relative path.
+func (sp *SubPage) Canonical() string {
+	return AbsURL(sp.FullURL)
+}
+
+// AbsImage is the absolute URL of the card image. Twitter and Facebook both
+// silently drop relative image paths.
+func (tc *TwitterCard) AbsImage() string {
+	return AbsURL(tc.Image)
 }
 
 type WebLink struct {
@@ -41,6 +69,7 @@ type GenerateData struct { // Loaded from files and Generated
 	ShortGallery GalleryList
 	GameList     GameList
 	Platforms    []string
+	Categories   []BlogCat // categories that survived the single-use filter
 }
 
 type TemplateRoot struct {
@@ -113,14 +142,17 @@ func generateDataOnly() {
 	genData.Job.LoadFromFile()
 	log.Println("Do Feed...")
 	genData.Feed.LoadFromFile()
+
+	// Date is derived from Pubdate, not stored. Without this the no-flag startup
+	// path regenerates rss.xml with every post on the zero date, so the feed
+	// comes out in arbitrary order.
+	for _, v := range genData.Feed {
+		v.FixupDateFromPubStr()
+	}
 	log.Println("Do Hobby...")
 	genData.Hobby.LoadFromFile()
 	LoadFromMicroListFolder()
 	LoadFromGalleryListFolder()
-
-	// Build Short Feed
-	genData.ShortFeed = genData.Feed[1:4]
-	genData.ShortMicro = genData.Feed[:1]
 
 	// Build Game List
 	genData.GameList = BuildFromJobs(&genData.Job)
@@ -137,6 +169,18 @@ func generateDataOnly() {
 			}
 		}
 	}
+}
+
+// buildShortLists fills the front-page lists: the newest post rendered in full,
+// then the next few as summaries. Must run after genData.Feed is sorted, and
+// takes copies rather than sub-slices so a later re-sort of Feed can't silently
+// change what the front page shows.
+func buildShortLists() {
+	newest := min(len(genData.Feed), 1)
+	genData.ShortMicro = append(BlogList{}, genData.Feed[:newest]...)
+
+	rest := min(len(genData.Feed), 4)
+	genData.ShortFeed = append(BlogList{}, genData.Feed[newest:rest]...)
 }
 
 func setupRoot() {

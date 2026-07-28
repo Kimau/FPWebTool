@@ -16,6 +16,11 @@ var (
 
 const publicHtmlRoot = "./public_html/"
 
+// siteBaseURL is the single canonical origin for the site. The site is also
+// reachable over http:// and without the www, so every absolute URL we emit
+// (canonical tags, og:url, sitemap, RSS) has to agree on this one.
+const siteBaseURL = "https://www.claire-blackshaw.com"
+
 func scanForInput() chan string {
 	lines := make(chan string)
 
@@ -60,12 +65,14 @@ func Generate() {
 	go copyFolderOver("static_folder", "", c1)
 	go copyFolderOver("images", "images", c2)
 
-	genWebsite()
-
-	// wait on gen
+	// The static copy has to land before generation starts. genWebsite() does
+	// RemoveAll on subtrees it owns (blog/, job/, hobby/), so running it
+	// alongside the copy is a race waiting to eat freshly copied files.
 	log.Println("----------------------------------------------\n Waiting on file copies...")
 	<-c1
 	<-c2
+
+	genWebsite()
 }
 
 func main() {

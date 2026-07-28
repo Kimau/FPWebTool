@@ -10,8 +10,10 @@ import (
 	"os"
 	"regexp"
 	"sort"
-	"sync"
+	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 type BlogCat string
@@ -38,11 +40,12 @@ type BlogPost struct {
 }
 
 var (
-	blogTemp, blogIndexTemp *template.Template
+	blogTemp, blogIndexTemp, blogCatTemp *template.Template
 
-	regUrlChar     *regexp.Regexp
-	regUrlSpace    *regexp.Regexp
-	regStripMarkup *regexp.Regexp
+	regUrlChar       *regexp.Regexp
+	regUrlSpace      *regexp.Regexp
+	regLegacyUrlChar *regexp.Regexp
+	regStripMarkup   *regexp.Regexp
 )
 
 const longformPubStr = "Mon, 02 Jan 2006 15:04:05 -0700"
@@ -53,8 +56,12 @@ const longformPubStr = "Mon, 02 Jan 2006 15:04:05 -0700"
 func init() {
 	var err error
 
-	regUrlChar = regexp.MustCompile("[^A-Za-z]")
-	regUrlSpace = regexp.MustCompile(" ")
+	// Drop punctuation but keep digits, then collapse whitespace runs into a
+	// single underscore. The old version stripped digits and spaces in one pass,
+	// which silently turned "Html5" into "Html" and made the space rule dead.
+	regUrlChar = regexp.MustCompile(`[^A-Za-z0-9\s]`)
+	regUrlSpace = regexp.MustCompile(`\s+`)
+	regLegacyUrlChar = regexp.MustCompile(`[^A-Za-z]`)
 	regStripMarkup = regexp.MustCompile("<[^<>]*>")
 
 	blogIndexTemp, err = template.ParseFiles("Templates/blogindex.html")
@@ -62,12 +69,44 @@ func init() {
 
 	blogTemp, err = template.ParseFiles("Templates/blogpost.html")
 	CheckErr(err)
+
+	blogCatTemp, err = template.ParseFiles("Templates/blogcat.html")
+	CheckErr(err)
+}
+
+// truncateRunes cuts s to at most maxBytes without splitting a UTF-8 rune, then
+// backs up to the last word boundary so descriptions don't end mid-word.
+func truncateRunes(s string, maxBytes int) string {
+	if len(s) <= maxBytes {
+		return strings.TrimSpace(s)
+	}
+
+	// Back off to a valid rune boundary.
+	cut := maxBytes
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	s = s[:cut]
+
+	// Then back off to the last space, provided that leaves something useful.
+	if idx := strings.LastIndexFunc(s, unicode.IsSpace); idx > maxBytes/2 {
+		s = s[:idx]
+	}
+
+	return strings.TrimSpace(s)
 }
 
 // //////////////////////////////////////////////////////////////////////////////
 // Blog Cat
 func (c BlogCat) UrlVer() string {
-	return regUrlSpace.ReplaceAllString(regUrlChar.ReplaceAllString(string(c), ""), "_")
+	s := regUrlChar.ReplaceAllString(string(c), "")
+	return regUrlSpace.ReplaceAllString(strings.TrimSpace(s), "_")
+}
+
+// LegacyUrlVer reproduces the pre-fix slug, which stripped digits and spaces in
+// one pass. Only used to decide where to leave a redirect behind.
+func (c BlogCat) LegacyUrlVer() string {
+	return regLegacyUrlChar.ReplaceAllString(string(c), "")
 }
 
 // //////////////////////////////////////////////////////////////////////////////
@@ -138,7 +177,7 @@ func (bp *BlogPost) SaveBodyToFile() error {
 
 	// Make Folder
 	destFolder := fmt.Sprintf("blogdata/post/%d", bp.Date.Year())
-	err := os.MkdirAll(destFolder, 077)
+	err := os.MkdirAll(destFolder, 0755)
 	if err != nil {
 		return err
 	}
@@ -152,6 +191,17 @@ func (bp *BlogPost) SaveBodyToFile() error {
 	}
 
 	return nil
+}
+
+// DateISO is the post date in ISO 8601. The HTML <time datetime> attribute and
+// schema.org datePublished both require it; Pubdate is RFC1123 and is rejected.
+func (bp *BlogPost) DateISO() string {
+	return bp.Date.Format(time.RFC3339)
+}
+
+// AbsLink is the fully-qualified post URL, for schema.org mainEntityOfPage.
+func (bp *BlogPost) AbsLink() string {
+	return AbsURL(bp.Link)
 }
 
 func (bp *BlogPost) FixupDateFromPubStr() {
@@ -216,11 +266,7 @@ func (bp *BlogPost) GeneratePage() {
 	if len(bp.ShortDesc) < 4 {
 		// Build Desc
 		sum := regStripMarkup.ReplaceAllString(string(bp.Body), " ")
-		if len(sum) > 200 {
-			sum = sum[0:200]
-		}
-
-		bp.ShortDesc = sum
+		bp.ShortDesc = truncateRunes(sum, 200)
 	}
 
 	tc := &TwitterCard{
@@ -263,7 +309,6 @@ func (bp *BlogPost) GeneratePage() {
 // Entry Point
 func GenerateBlog() {
 	var err error
-	var wg sync.WaitGroup
 
 	os.RemoveAll(publicHtmlRoot + "blog/")
 	err = os.MkdirAll(publicHtmlRoot+"blog/", 0777)
@@ -282,8 +327,10 @@ func GenerateBlog() {
 		v.Category = []BlogCat{}
 		for _, c := range v.RawCategory {
 			if len(catMap[c]) < 2 {
+				if _, stillThere := catMap[c]; stillThere {
+					removedCat = append(removedCat, "-"+c)
+				}
 				delete(catMap, c)
-				removedCat = append(removedCat, "-"+c)
 			} else {
 				v.Category = append(v.Category, c)
 			}
@@ -305,25 +352,82 @@ func GenerateBlog() {
 	sort.Sort(genData.Feed)
 	genData.Feed.GeneratePage()
 
+	// Record the surviving categories so the sitemap can list them, and shout if
+	// two of them slug down to the same folder (last write would silently win).
+	slugOwner := make(map[string]BlogCat)
+	genData.Categories = genData.Categories[:0]
 	for k, v := range catMap {
+		if prev, clash := slugOwner[k.UrlVer()]; clash {
+			log.Printf("WARNING: categories %q and %q both map to /blog/cat/%s/ - one will overwrite the other\n", prev, k, k.UrlVer())
+		}
+		slugOwner[k.UrlVer()] = k
+
+		genData.Categories = append(genData.Categories, k)
 		GenerateBlogCatergoryPage(k, &v)
 	}
+	sort.Slice(genData.Categories, func(i, j int) bool { return genData.Categories[i] < genData.Categories[j] })
 
-	wg.Wait()
+	// Fixing the slug (it used to eat digits, so "Ludum Dare 48" became
+	// "LudumDare") moves category URLs Google has already crawled. Leave a
+	// redirect at each old path rather than letting it 404.
+	legacyDone := make(map[string]bool)
+	for _, c := range genData.Categories {
+		legacy := c.LegacyUrlVer()
+		if legacy == "" || legacy == c.UrlVer() || legacyDone[legacy] {
+			continue
+		}
+		if _, taken := slugOwner[legacy]; taken {
+			continue // a real category already lives there
+		}
+
+		legacyDone[legacy] = true
+		WriteRedirectStub("/blog/cat/"+legacy+"/", "/blog/cat/"+c.UrlVer()+"/")
+	}
+	log.Printf("Wrote %d legacy category redirects\n", len(legacyDone))
+
+	buildShortLists()
+}
+
+// WriteRedirectStub leaves a page that sends both crawlers and browsers to dest.
+// The bucket is served as an S3 static site behind CloudFront, so we can't emit
+// a real 301 from the build; a canonical plus a zero-delay refresh is the
+// closest equivalent and Google treats it as a permanent move.
+func WriteRedirectStub(fromPath string, dest string) {
+	err := os.MkdirAll(publicHtmlRoot+fromPath, 0777)
+	CheckErrContext(err, "Error in Mkdir ")
+
+	f, err := os.Create(publicHtmlRoot + fromPath + "index.html")
+	CheckErrContext(err, "Error in File ")
+	defer f.Close()
+
+	absDest := AbsURL(dest)
+	fmt.Fprintf(f, `<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<title>Moved</title>
+<link rel="canonical" href="%s">
+<meta name="robots" content="noindex, follow">
+<meta http-equiv="refresh" content="0; url=%s">
+</head>
+<body><p>This page has moved to <a href="%s">%s</a>.</p></body>
+</html>
+`, absDest, absDest, absDest, absDest)
 }
 
 func GenerateBlogCatergoryPage(cat BlogCat, blist *BlogList) {
 	var err error
 	var outBuffer bytes.Buffer
 
-	err = blogIndexTemp.Execute(&outBuffer, blist)
+	err = blogCatTemp.Execute(&outBuffer, blist)
 	CheckErrContext(err, "Error in Template ")
 
 	// Write out Frame
 	frameData := &SubPage{
-		Title:   "Blog - " + string(cat),
-		FullURL: "/blog/cat/" + cat.UrlVer() + "/",
-		Content: template.HTML(outBuffer.String()),
+		Title:     "Blog - " + string(cat),
+		FullURL:   "/blog/cat/" + cat.UrlVer() + "/",
+		ShortDesc: "Posts by Claire Blackshaw tagged " + string(cat) + ".",
+		Content:   template.HTML(outBuffer.String()),
 	}
 
 	err = os.MkdirAll(publicHtmlRoot+"blog/cat/"+cat.UrlVer(), 0777)

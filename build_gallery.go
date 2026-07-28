@@ -40,7 +40,9 @@ func init() {
 	var err error
 
 	regUrlSrc = regexp.MustCompile(`src="([^"]+)"`)
-	regHeader = regexp.MustCompile(`<h(1|2|3)>([^"]+)</h(1|2|3)>`)
+	// [^<]+ rather than [^"]+ so a page with several headings doesn't match from
+	// the first opening tag all the way to the last closing one.
+	regHeader = regexp.MustCompile(`<h(1|2|3)>([^<]+)</h(1|2|3)>`)
 	gallerySrcDir = filepath.Clean("./gallery")
 
 	galleryTemp, err = template.ParseFiles("Templates/gallery.html")
@@ -48,6 +50,11 @@ func init() {
 
 	galSingleTemp, err = template.ParseFiles("Templates/galsingle.html")
 	CheckErr(err)
+}
+
+// DateISO is the post date in ISO 8601, as required by <time datetime>.
+func (gp *GalleryPost) DateISO() string {
+	return gp.Date.Format(time.RFC3339)
 }
 
 // //////////////////////////////////////////////////////////////////////////////
@@ -128,7 +135,7 @@ func LoadGalleryFile(path string, info os.FileInfo, err error) error {
 		}
 
 		newPost.Body = template.HTML("<pre>" + string(body) + "</pre>")
-		newPost.Brief = string(body[:128])
+		newPost.Brief = truncateRunes(string(body), 128)
 
 	} else if ext == ".md" {
 
@@ -147,7 +154,7 @@ func LoadGalleryFile(path string, info os.FileInfo, err error) error {
 		}))
 
 		headers := regHeader.FindStringSubmatch(string(newPost.Body))
-		if len(headers) > 1 {
+		if len(headers) > 2 {
 			newPost.Brief = headers[2]
 		} else {
 			newPost.Brief = string(string(newPost.Body))
@@ -169,8 +176,9 @@ func LoadGalleryFile(path string, info os.FileInfo, err error) error {
 		}))
 
 		headers := regHeader.FindStringSubmatch(string(newPost.Body))
-		if len(headers) > 1 {
-			newPost.Brief = headers[1]
+		if len(headers) > 2 {
+			// Group 1 is the heading level digit, group 2 is the text.
+			newPost.Brief = headers[2]
 		} else {
 			newPost.Brief = string(string(newPost.Body))
 		}

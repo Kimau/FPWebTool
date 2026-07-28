@@ -56,11 +56,13 @@ func (hl *HobbyList) GeneratePage() {
 	err = hobbyIndexTemp.Execute(&outBuffer, hl)
 	CheckErr(err)
 
-	// Write out Frame
+	// Write out Frame. This page is written to /projects/, so FullURL has to say
+	// /projects/ - it feeds the canonical tag and the og:url.
 	frameData := &SubPage{
-		Title:   "Hobby",
-		FullURL: "/hobby/",
-		Content: template.HTML(outBuffer.String()),
+		Title:     "Experiments",
+		FullURL:   "/projects/",
+		ShortDesc: "Hobby projects, experiments and game jam entries by Claire Blackshaw.",
+		Content:   template.HTML(outBuffer.String()),
 	}
 
 	os.MkdirAll(publicHtmlRoot+"projects/", 0777)
@@ -79,8 +81,10 @@ func (hl *HobbyList) GeneratePage() {
 // //////////////////////////////////////////////////////////////////////////////
 // Generate Hobby
 func GenerateHobby() {
-	os.RemoveAll(publicHtmlRoot + "hobby/")
-	_ = os.MkdirAll(publicHtmlRoot+"hobby/", 0777)
+	// The page lives at /projects/; the old empty /hobby/ directory was never
+	// written to and just shipped an empty folder to the bucket.
+	os.RemoveAll(publicHtmlRoot + "projects/")
+	_ = os.MkdirAll(publicHtmlRoot+"projects/", 0777)
 
 	genData.Hobby.GeneratePage()
 }
