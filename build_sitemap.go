@@ -25,6 +25,19 @@ func sitemapDate(t time.Time) string {
 	return t.UTC().Format("2006-01-02")
 }
 
+// fileModTime is the newest modification time among the source files a page is
+// built from, or the zero time (which sitemapDate turns into "now") if none of
+// them can be read.
+func fileModTime(paths ...string) time.Time {
+	var newest time.Time
+	for _, p := range paths {
+		if info, err := os.Stat(p); err == nil && info.ModTime().After(newest) {
+			newest = info.ModTime()
+		}
+	}
+	return newest
+}
+
 // //////////////////////////////////////////////////////////////////////////////
 // Site Map
 func GenerateSiteMap() {
@@ -42,28 +55,44 @@ func GenerateSiteMap() {
 		})
 	}
 
-	now := time.Now()
-
-	// Landing pages
-	add("/", now, "daily", 1.0)
-	add("/blog/", now, "daily", 1.0)
-	add("/projects/", now, "monthly", 0.8)
-	add("/job/", now, "monthly", 0.8)
-	add("/gallery/", now, "weekly", 0.6)
-	add("/micro/", now, "weekly", 0.6)
-
-	// Blog posts
+	// lastmod has to be the date the content actually changed. It used to be the
+	// build time for every landing page and the newest post on the whole site for
+	// every category, so /blog/cat/Chess/ (newest post 2010) claimed to change on
+	// every build. Google only uses lastmod while it keeps matching what it finds
+	// on the page, and stops trusting it for the whole sitemap once it doesn't.
 	newestPost := time.Time{}
 	for _, v := range genData.Feed {
-		add(v.Link, v.Date, "monthly", 0.7)
 		if v.Date.After(newestPost) {
 			newestPost = v.Date
 		}
 	}
+	newestGallery := time.Time{}
+	for _, g := range genData.Gallery {
+		if g.Date.After(newestGallery) {
+			newestGallery = g.Date
+		}
+	}
 
-	// Category listings
+	// Landing pages. /micro/ is deliberately absent: it is noindex, because it
+	// repeats every micro post in full.
+	add("/", newestPost, "daily", 1.0)
+	add("/blog/", newestPost, "daily", 1.0)
+	add("/projects/", fileModTime("Data/hobby.js", "Templates/projects.html"), "monthly", 0.8)
+	add("/job/", fileModTime("Data/job.js", "Templates/job.html"), "monthly", 0.8)
+	add("/gallery/", newestGallery, "weekly", 0.6)
+
+	// Blog posts
+	for _, v := range genData.Feed {
+		add(v.Link, v.Date, "monthly", 0.7)
+	}
+
+	// Category listings. The thin ones are noindex, and a noindex URL in the
+	// sitemap is an error in Search Console.
 	for _, c := range genData.Categories {
-		add("/blog/cat/"+c.UrlVer()+"/", newestPost, "weekly", 0.4)
+		if !c.Indexable() {
+			continue
+		}
+		add("/blog/cat/"+c.Cat.UrlVer()+"/", c.Newest, "weekly", 0.4)
 	}
 
 	// Gallery posts. g.Link is relative to the gallery folder, so it needs the

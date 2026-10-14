@@ -60,7 +60,16 @@ type SubPage struct {
 	ShortDesc string
 	FullURL   string
 	Social    *SocialCard
+
+	// Robots is the meta robots directive, empty for an ordinary indexable page.
+	// Anything set here must also be kept out of the sitemap: listing a noindex
+	// URL there is a contradiction Search Console reports as an error.
+	Robots string
 }
+
+// robotsListingOnly keeps a page out of the index while still letting crawlers
+// follow its links through to the posts it lists.
+const robotsListingOnly = "noindex, follow"
 
 // Canonical is the absolute URL for this page, used by <link rel="canonical">
 // and og:url. Both are ignored by crawlers if given a relative path.

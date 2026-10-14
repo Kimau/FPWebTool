@@ -326,11 +326,16 @@ func GenerateMicro() {
 		}
 	}
 
+	// /micro/ renders every micro post in full, so to a crawler each post's own page
+	// is a duplicate of a slice of this one - Pickle05's entire story sits on both,
+	// and it is one of the posts Search Console crawls and declines to index. Only
+	// the posts get indexed; /blog/cat/micro/ is the indexable listing of them.
 	WritePage(&SubPage{
 		Title:     "Micro Posts",
 		FullURL:   "/micro/",
 		ShortDesc: desc,
 		Content:   template.HTML(outBuffer.String()),
 		Social:    listingCard("Micro Posts", desc, newest),
+		Robots:    robotsListingOnly,
 	}, publicHtmlRoot+"micro/index.html")
 }

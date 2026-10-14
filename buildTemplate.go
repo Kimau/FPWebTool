@@ -41,7 +41,7 @@ type GenerateData struct { // Loaded from files and Generated
 	ShortGallery GalleryList
 	GameList     GameList
 	Platforms    []string
-	Categories   []BlogCat // categories that survived the single-use filter
+	Categories   []CategoryPage // categories that survived the single-use filter
 }
 
 type TemplateRoot struct {
@@ -85,10 +85,22 @@ func GenerateAbout() {
 	err = aboutIndexTemp.Execute(&outBuffer, genData)
 	CheckErrContext(err, "Error in Template ")
 
+	// root.html prefixes every <title> with "Claire Blackshaw: ", so titling this
+	// page with the name rendered as "Claire Blackshaw: Claire Blackshaw". The share
+	// card keeps the name, since sharing the home page is sharing the person.
+	const desc = "Claire Blackshaw is a creative programmer and Technical Director at " +
+		"Flammable Penguins Games. Writing, experiments and talks on game development, " +
+		"engines, VR and roleplaying games."
+
 	WritePage(&SubPage{
-		Title:   "Claire Blackshaw",
-		FullURL: "/",
-		Content: template.HTML(outBuffer.String()),
+		Title:     siteName,
+		FullURL:   "/",
+		ShortDesc: desc,
+		Content:   template.HTML(outBuffer.String()),
+		Social: &SocialCard{
+			Title:       "Claire Blackshaw",
+			Description: desc,
+		},
 	}, publicHtmlRoot+"index.html")
 }
 

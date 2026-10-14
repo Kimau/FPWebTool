@@ -18,6 +18,23 @@ import (
 )
 
 type BlogCat string
+
+// CategoryPage is one /blog/cat/X/ listing as the sitemap needs to see it.
+type CategoryPage struct {
+	Cat    BlogCat
+	Count  int
+	Newest time.Time // newest post in this category, for the sitemap lastmod
+}
+
+// minIndexedCategoryPosts is the smallest category allowed into the index. Below
+// it a listing is two or three post summaries that already appear on /blog/ and
+// on the posts themselves, and Search Console files those pages (Agent, Chess,
+// Strategy, Go, Xml...) under "Crawled - currently not indexed". They are still
+// generated and still linked, just marked noindex and left out of the sitemap.
+const minIndexedCategoryPosts = 5
+
+func (cp CategoryPage) Indexable() bool { return cp.Count >= minIndexedCategoryPosts }
+
 type BlogPost struct {
 	Key         string    `json:"key"`
 	Title       string    `json:"title"`
@@ -312,22 +329,35 @@ func GenerateBlog() {
 	// two of them slug down to the same folder (last write would silently win).
 	slugOwner := make(map[string]BlogCat)
 	genData.Categories = genData.Categories[:0]
+	thin := 0
 	for k, v := range catMap {
 		if prev, clash := slugOwner[k.UrlVer()]; clash {
 			log.Printf("WARNING: categories %q and %q both map to /blog/cat/%s/ - one will overwrite the other\n", prev, k, k.UrlVer())
 		}
 		slugOwner[k.UrlVer()] = k
 
-		genData.Categories = append(genData.Categories, k)
-		GenerateBlogCatergoryPage(k, &v)
+		page := CategoryPage{Cat: k, Count: len(v)}
+		for _, p := range v {
+			if p.Date.After(page.Newest) {
+				page.Newest = p.Date
+			}
+		}
+		if !page.Indexable() {
+			thin++
+		}
+
+		genData.Categories = append(genData.Categories, page)
+		GenerateBlogCatergoryPage(page, &v)
 	}
-	sort.Slice(genData.Categories, func(i, j int) bool { return genData.Categories[i] < genData.Categories[j] })
+	sort.Slice(genData.Categories, func(i, j int) bool { return genData.Categories[i].Cat < genData.Categories[j].Cat })
+	log.Printf("%d categories, %d below %d posts marked noindex\n", len(genData.Categories), thin, minIndexedCategoryPosts)
 
 	// Fixing the slug (it used to eat digits, so "Ludum Dare 48" became
 	// "LudumDare") moves category URLs Google has already crawled. Leave a
 	// redirect at each old path rather than letting it 404.
 	legacyDone := make(map[string]bool)
-	for _, c := range genData.Categories {
+	for _, page := range genData.Categories {
+		c := page.Cat
 		legacy := c.LegacyUrlVer()
 		if legacy == "" || legacy == c.UrlVer() || legacyDone[legacy] {
 			continue
@@ -348,6 +378,11 @@ func GenerateBlog() {
 // The bucket is served as an S3 static site behind CloudFront, so we can't emit
 // a real 301 from the build; a canonical plus a zero-delay refresh is the
 // closest equivalent and Google treats it as a permanent move.
+//
+// No meta robots noindex here. It used to carry one, but noindex next to a
+// rel=canonical is a contradiction - "drop this" and "this is the same as that"
+// - and Google warns it can carry the noindex over to the target. The redirect
+// alone already keeps the stub itself out of the index.
 func WriteRedirectStub(fromPath string, dest string) {
 	err := os.MkdirAll(publicHtmlRoot+fromPath, 0777)
 	CheckErrContext(err, "Error in Mkdir ")
@@ -363,7 +398,6 @@ func WriteRedirectStub(fromPath string, dest string) {
 <meta charset="utf-8">
 <title>Moved</title>
 <link rel="canonical" href="%s">
-<meta name="robots" content="noindex, follow">
 <meta http-equiv="refresh" content="0; url=%s">
 </head>
 <body><p>This page has moved to <a href="%s">%s</a>.</p></body>
@@ -371,7 +405,9 @@ func WriteRedirectStub(fromPath string, dest string) {
 `, absDest, absDest, absDest, absDest)
 }
 
-func GenerateBlogCatergoryPage(cat BlogCat, blist *BlogList) {
+func GenerateBlogCatergoryPage(page CategoryPage, blist *BlogList) {
+	cat := page.Cat
+
 	// catMap is filled in load order, so without this the category listings come
 	// out in semi-arbitrary order - and the card wants the newest post's image.
 	sort.Sort(*blist)
@@ -383,11 +419,17 @@ func GenerateBlogCatergoryPage(cat BlogCat, blist *BlogList) {
 	title := "Blog - " + string(cat)
 	desc := "Posts by Claire Blackshaw tagged " + string(cat) + "."
 
+	robots := ""
+	if !page.Indexable() {
+		robots = robotsListingOnly
+	}
+
 	WritePage(&SubPage{
 		Title:     title,
 		FullURL:   "/blog/cat/" + cat.UrlVer() + "/",
 		ShortDesc: desc,
 		Content:   template.HTML(outBuffer.String()),
 		Social:    listingCard(title, desc, firstHero(*blist)),
+		Robots:    robots,
 	}, publicHtmlRoot+"blog/cat/"+cat.UrlVer()+"/index.html")
 }
