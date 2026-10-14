@@ -60,6 +60,14 @@ func copyFolderOver(folder string, destFolder string, c chan (int)) {
 
 func Generate() {
 	os.RemoveAll(publicHtmlRoot)
+
+	// Both copies below run at once, and CopyTree only Mkdirs the last path
+	// element. If the images copy got there first it failed with "mkdir
+	// public_html\images: The system cannot find the path specified", because
+	// the static copy had not created public_html yet.
+	err := os.MkdirAll(publicHtmlRoot, 0777)
+	CheckErrContext(err, "Unable to make", publicHtmlRoot)
+
 	c1 := make(chan int)
 	c2 := make(chan int)
 	go copyFolderOver("static_folder", "", c1)

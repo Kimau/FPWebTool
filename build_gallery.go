@@ -308,10 +308,29 @@ func GenerateGallery() {
 		}, publicHtmlRoot+"gallery/index.html")
 	}
 
-	genData.ShortGallery = nil
-	genData.ShortGallery = append(genData.ShortGallery, genData.Gallery...)
-	sort.Sort(genData.ShortGallery)
-	if len(genData.ShortGallery) > 8 {
-		genData.ShortGallery = genData.ShortGallery[:8]
+	genData.ShortGallery = recentGallery(genData.Gallery, time.Now())
+}
+
+// galleryFreshnessMonths is how far back the front page looks for gallery posts.
+const galleryFreshnessMonths = 6
+
+// recentGallery picks the front page's gallery strip: posts from the six months
+// before the build, newest first, at most eight. It is empty when nothing is that
+// recent, and about.html drops the whole section rather than showing stale work.
+// The gallery page itself still lists everything.
+func recentGallery(all GalleryList, now time.Time) GalleryList {
+	cutoff := now.AddDate(0, -galleryFreshnessMonths, 0)
+
+	var recent GalleryList
+	for _, g := range all {
+		if g.Date.After(cutoff) {
+			recent = append(recent, g)
+		}
 	}
+
+	sort.Sort(GalleryListByDate(recent))
+	if len(recent) > 8 {
+		recent = recent[:8]
+	}
+	return recent
 }

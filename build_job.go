@@ -19,18 +19,20 @@ type JobObject struct {
 }
 
 type GameProject struct {
-	Title     string    `json:"title"`
-	Developer string    `json:"developer"`
-	Job       string    `json:"job"`
-	Publisher string    `json:"publisher"`
-	Released  string    `json:"released"`
-	Position  string    `json:"position"`
-	Website   string    `json:"website"`
-	Youtube   string    `json:"youtube"`
-	Platform  []string  `json:"platform"`
-	Images    []string  `json:"images"`
-	Body      []string  `json:"body"`
-	Date      time.Time `json:"date"`
+	Title      string    `json:"title"`
+	Developer  string    `json:"developer"`
+	Job        string    `json:"job"`
+	Publisher  string    `json:"publisher"`
+	Released   string    `json:"released"`
+	Position   string    `json:"position"`
+	Website    string    `json:"website"`
+	Youtube    string    `json:"youtube"`
+	SteamAppID string    `json:"steamAppId"`
+	MetaStore  string    `json:"metaStore"`
+	Platform   []string  `json:"platform"`
+	Images     []string  `json:"images"`
+	Body       []string  `json:"body"`
+	Date       time.Time `json:"date"`
 }
 
 // //////////////////////////////////////////////////////////////////////////////

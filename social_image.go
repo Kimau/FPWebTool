@@ -362,39 +362,60 @@ var regYouTube = regexp.MustCompile(`(?i)(?:` +
 // regYTID guards the id before it is interpolated into a file path and a URL.
 var regYTID = regexp.MustCompile(`^[A-Za-z0-9_-]{11}$`)
 
+// youTubeIDs returns every genuine video id in body, in order, without repeats.
+func youTubeIDs(body string) []string {
+	var ids []string
+	seen := map[string]bool{}
+	for _, m := range regYouTube.FindAllStringSubmatch(body, -1) {
+		if m[2] != "" || seen[m[1]] {
+			continue // 12+ id-legal chars, so not a video id; or already listed
+		}
+		seen[m[1]] = true
+		ids = append(ids, m[1])
+	}
+	return ids
+}
+
 // firstYouTubeID returns the first genuine video id in body, or "".
 func firstYouTubeID(body string) string {
-	for _, m := range regYouTube.FindAllStringSubmatch(body, -1) {
-		if m[2] != "" {
-			continue // 12+ id-legal chars, so not a video id
-		}
-		return m[1]
+	if ids := youTubeIDs(body); len(ids) > 0 {
+		return ids[0]
 	}
 	return ""
 }
 
-// firstYouTubeImage resolves the first video in the body to a cached thumbnail.
+// firstYouTubeImage resolves the first video in the body that has a usable
+// thumbnail. It used to try only the first video, so a post whose first embed had
+// been deleted shared as the site logo even with a perfectly good video below it.
 func firstYouTubeImage(body, alt string) ResolvedImage {
-	id := firstYouTubeID(body)
-	if id == "" {
-		return ResolvedImage{}
+	for _, id := range youTubeIDs(body) {
+		if webPath := cacheYouTubeThumb(id); webPath != "" {
+			return validateImage(webPath, alt, srcYouTube)
+		}
 	}
-
-	webPath := cacheYouTubeThumb(id)
-	if webPath == "" {
-		return ResolvedImage{}
-	}
-
-	return validateImage(webPath, alt, srcYouTube)
+	return ResolvedImage{}
 }
 
-var (
-	ytClient  = &http.Client{Timeout: 10 * time.Second}
-	ytOffline bool // latched on the first transport failure
+// ytMaxFailures is how many transport failures in a row it takes to decide we are
+// offline. It used to be one, so a single slow response switched thumbnails off
+// for the rest of the build and every later video post shared as the site logo.
+const ytMaxFailures = 3
 
-	// Largest first. maxresdefault only exists if the uploader supplied an HD
-	// source, so a 404 here is normal and just means try the next size down.
-	ytThumbNames = []string{"maxresdefault.jpg", "sddefault.jpg", "hqdefault.jpg"}
+var (
+	ytClient   = &http.Client{Timeout: 10 * time.Second}
+	ytOffline  bool // latched after ytMaxFailures transport failures in a row
+	ytFailures int
+
+	// Best first. A 404 is normal and just means try the next one down:
+	//
+	//	maxresdefault  1280x720, only if the uploader supplied an HD source
+	//	hq720          1280x720, sometimes present when maxres is not
+	//	sddefault      640x480, 4:3 - letterboxed for widescreen video, see cropLetterbox
+	//	hqdefault      480x360, 4:3 - same
+	//	mqdefault      320x180, 16:9, generated for every video. The last resort: an
+	//	               early-2000s upload can have an hqdefault of 128x100, which the
+	//	               size floor rightly rejects, and nothing else above it
+	ytThumbNames = []string{"maxresdefault.jpg", "hq720.jpg", "sddefault.jpg", "hqdefault.jpg", "mqdefault.jpg"}
 )
 
 // cacheYouTubeThumb guarantees images/yt/<id>.jpg exists and returns its site
@@ -408,7 +429,14 @@ func cacheYouTubeThumb(id string) string {
 	webPath := ytThumbWebDir + id + ".jpg"
 	diskPath := filepath.Join(ytThumbDiskDir, id+".jpg")
 
-	if _, err := os.Stat(diskPath); err == nil {
+	if cached, err := os.ReadFile(diskPath); err == nil {
+		// Thumbs cached before letterbox cropping existed get fixed in place, once:
+		// a cropped file has no bars left, so this is a no-op from then on.
+		if cropped, did := cropLetterbox(cached); did {
+			if err := writeFileAtomic(diskPath, cropped); err == nil {
+				log.Printf("Cropped letterbox bars from cached YouTube thumb %s\n", id)
+			}
+		}
 		mirrorThumbToWebRoot(diskPath, id)
 		return webPath
 	}
@@ -417,20 +445,35 @@ func cacheYouTubeThumb(id string) string {
 		return ""
 	}
 
+	all404 := true
 	for _, name := range ytThumbNames {
 		body, err := ytFetch("https://i.ytimg.com/vi/" + id + "/" + name)
 		if err != nil {
-			if _, isHTTP := err.(ytStatusError); isHTTP {
+			if status, isHTTP := err.(ytStatusError); isHTTP {
+				ytFailures = 0
+				if status != http.StatusNotFound {
+					all404 = false
+				}
 				continue // this size doesn't exist, try the next
 			}
-			ytOffline = true
-			log.Println("YouTube unreachable, skipping thumbnails for the rest of this build:", err)
+			ytFailures++
+			if ytFailures >= ytMaxFailures {
+				ytOffline = true
+				log.Println("YouTube unreachable, skipping thumbnails for the rest of this build:", err)
+			} else {
+				log.Println("YouTube thumbnail fetch failed for", id, "- will keep trying other videos:", err)
+			}
 			return ""
 		}
+		ytFailures = 0
+		all404 = false
+
+		body, _ = cropLetterbox(body)
 
 		// Trust the pixels, not the status code: i.ytimg.com answers 200 with a
 		// 120x90 grey placeholder for sizes it doesn't have, and enshrining that
-		// in a committed cache would be worse than having no thumbnail.
+		// in a committed cache would be worse than having no thumbnail. Checked
+		// after the crop, so a letterboxed 480x360 is judged as the 480x270 it is.
 		cfg, _, decErr := image.DecodeConfig(bytes.NewReader(body))
 		if decErr != nil || cfg.Width < 320 || cfg.Height < 180 {
 			continue
@@ -446,7 +489,13 @@ func cacheYouTubeThumb(id string) string {
 		return webPath
 	}
 
-	log.Printf("No usable thumbnail for YouTube video %s\n", id)
+	if all404 {
+		// No size at all exists only when the video itself is gone, which means the
+		// embed on the post is a dead "Video unavailable" box too.
+		log.Printf("YouTube video %s looks deleted or private: no thumbnails at all, so its embed is dead too\n", id)
+	} else {
+		log.Printf("No usable thumbnail for YouTube video %s\n", id)
+	}
 	return ""
 }
 

@@ -174,7 +174,7 @@ func (bp *BlogPost) LoadBodyFromFile() error {
 	bodyBytes, err := os.ReadFile(srcFile)
 	CheckErr(err)
 
-	bp.Body = template.HTML(bodyBytes)
+	bp.Body = template.HTML(fixBodyURLs(string(bodyBytes)))
 	return nil
 }
 
@@ -218,7 +218,19 @@ func (bp *BlogPost) AbsLink() string {
 // without a desc shipped an empty itemprop="description" while <head> got the
 // derived one. blogindex.html, blogcat.html, about.html and rss.xml all read this
 // same field, so it has to be settled before any of them run.
+//
+// Legacy WordPress posts always re-derive, from the body, and fall back to the
+// stored desc only when the body has no text at all. See legacyDesc for why the
+// stored ones can't be trusted. Micro posts keep their sidecar desc, which is
+// their TLDR.
 func (bp *BlogPost) EnsureShortDesc() {
+	if !bp.IsMicro {
+		if d := legacyDesc(string(bp.Body)); d != "" {
+			bp.ShortDesc = d
+			return
+		}
+	}
+
 	if len(strings.TrimSpace(bp.ShortDesc)) >= 4 {
 		return
 	}

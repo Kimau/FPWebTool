@@ -192,7 +192,7 @@ func LoadSingleFile(path string, info os.FileInfo, err error) error {
 	// description are both derived from the same, heading-free text. This is the
 	// ordering that was wrong: it used to happen after enrichment, and on a copy.
 	heading, body := stripLeadHeading(string(newPost.Body))
-	newPost.Body = template.HTML(body)
+	newPost.Body = template.HTML(fixBodyURLs(body))
 
 	// Load existing JSON if present
 	if _, statErr := os.Stat(jsonPath); statErr == nil {
