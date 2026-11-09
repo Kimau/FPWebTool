@@ -23,7 +23,65 @@ var (
 
 	// Local image references, in src or in the href of a click-to-enlarge link.
 	regLocalImageRef = regexp.MustCompile(`(?i)(\b(?:src|href)\s*=\s*["'])(/?images/[^"'%]+)(["'])`)
+
+	// Links into the 2006-2011 site, from when flammablepenguins.com was this
+	// site. The WordPress import writes most of them root-relative, so they now
+	// resolve against this site and 404. Also catches absolute links to
+	// flammablepenguins.com and the old itpc:// podcast subscribe links. Only
+	// paths in legacyPaths are rewritten; the query string is dropped.
+	regLegacyLink = regexp.MustCompile(`(?i)(\bhref\s*=\s*["'])(?:(?:https?|itpc)://(?:www\.)?flammablepenguins\.com)?(/[^"'?#\s]*)[^"']*(["'])`)
+
+	// The dead Google Fusion "add to reader" buttons carry the podcast feed,
+	// URL-encoded, at its old flammablepenguins.com address.
+	regLegacyFeed = regexp.MustCompile(`(?i)http(%3A|:)//(?:www\.)?flammablepenguins\.com/FPPod\.xml`)
 )
+
+// legacyPaths maps pages of the old flammablepenguins.com personal site to
+// where that content lives now. Keys are lowercase. On flammablepenguins.com
+// itself the same paths 301 to the same places (compweb's
+// .cloudfront/redirects.js), so keep the two tables in step.
+var legacyPaths = map[string]string{
+	"/index.php":      "/",
+	"/about.php":      "/",
+	"/feedback.html":  "/",
+	"/gamefeed.php":   "/",
+	"/hobbies.html":   "/",
+	"/hobby":          "/",
+	"/hobby/":         "/",
+	"/drama.html":     "/",
+	"/tales.php":      "/",
+	"/talesother.php": "/",
+
+	"/cv.html":       "/job/",
+	"/cv.php":        "/job/",
+	"/profwork.html": "/job/",
+
+	"/code.html":     "/projects/",
+	"/code.php":      "/projects/",
+	"/code_api.php":  "/projects/",
+	"/code_tut.php":  "/projects/",
+	"/codebox.php":   "/projects/",
+	"/coderef.php":   "/blog/cat/Ptk/",
+	"/code_week.php": "/blog/cat/Weekend_of_Code_Contest/",
+
+	"/art.html":   "/gallery/",
+	"/comic.html": "/gallery/",
+	"/comic.php":  "/gallery/",
+
+	"/rpg.html":    "/blog/cat/Roleplaying_Games/",
+	"/talesrp.php": "/blog/cat/Roleplaying_Games/",
+
+	"/game.php":       "/blog/cat/Game_Pit/",
+	"/gamecomp.php":   "/blog/cat/Game_Pit/",
+	"/gamesubmit.php": "/blog/cat/Game_Pit/",
+	"/gamepit.xml":    "/blog/cat/Game_Pit/",
+
+	"/podcast.php":     "/blog/cat/Podcast/",
+	"/gamepod.php":     "/blog/cat/Podcast/",
+	"/podsuggest.html": "/blog/cat/Podcast/",
+
+	"/fppod.xml": "/FPPod.xml",
+}
 
 // fixBodyURLs repairs post bodies on the way out. The sources are left as they
 // are: blogdata/ is the untouched WordPress import, and micro posts are Claire's
@@ -45,6 +103,16 @@ func fixBodyURLs(body string) string {
 		}
 		return p[1] + real + p[3]
 	})
+
+	body = regLegacyLink.ReplaceAllStringFunc(body, func(m string) string {
+		p := regLegacyLink.FindStringSubmatch(m)
+		to, ok := legacyPaths[strings.ToLower(p[2])]
+		if !ok {
+			return m
+		}
+		return p[1] + to + p[3]
+	})
+	body = regLegacyFeed.ReplaceAllString(body, "https${1}//www.claire-blackshaw.com/FPPod.xml")
 
 	body = regYouTubeHTTP.ReplaceAllString(body, "${1}https://www.youtube.com/")
 	body = regObject.ReplaceAllStringFunc(body, func(obj string) string {

@@ -30,6 +30,36 @@ func TestFixBodyURLs(t *testing.T) {
 			`<iframe src="https://www.youtube.com/embed/fzMhh8zhTiY" width="560">`,
 		},
 		{
+			"legacy root-relative page",
+			`<li>Suggest new topics on our <a href="/PodSuggest.html">Topics Suggestion Page</a>.</li>`,
+			`<li>Suggest new topics on our <a href="/blog/cat/Podcast/">Topics Suggestion Page</a>.</li>`,
+		},
+		{
+			"legacy page in single quotes",
+			`<p>The <a href='/code_week.php'>Rules and Hints</a></p>`,
+			`<p>The <a href='/blog/cat/Weekend_of_Code_Contest/'>Rules and Hints</a></p>`,
+		},
+		{
+			"legacy itpc feed on the old host",
+			`<a href="itpc://www.flammablepenguins.com/GamePIT.xml">New iTunes Feed</a>`,
+			`<a href="/blog/cat/Game_Pit/">New iTunes Feed</a>`,
+		},
+		{
+			"legacy absolute link with a query string",
+			`<a href="http://www.flammablepenguins.com/feedback.html?from=pit">x</a>`,
+			`<a href="/">x</a>`,
+		},
+		{
+			"legacy podcast feed inside a fusion button",
+			`<a href="http://fusion.google.com/add?source=atgs&amp;feedurl=http%3A//www.flammablepenguins.com/FPPod.xml"></a>`,
+			`<a href="http://fusion.google.com/add?source=atgs&amp;feedurl=https%3A//www.claire-blackshaw.com/FPPod.xml"></a>`,
+		},
+		{
+			"live paths and unmapped legacy pages are left alone",
+			`<a href="/blog/2010/07/podcast-3-aqua-attack/">a</a><a href="https://flammablepenguins.com/gamedev.html">b</a><a href="/cop.php">c</a><a href="/FPPod.xml">d</a>`,
+			`<a href="/blog/2010/07/podcast-3-aqua-attack/">a</a><a href="https://flammablepenguins.com/gamedev.html">b</a><a href="/cop.php">c</a><a href="/FPPod.xml">d</a>`,
+		},
+		{
 			"link text and other sites are left alone",
 			`<p>See http://www.claire-blackshaw.com/ or <a href="http://example.com/">this</a></p>`,
 			`<p>See http://www.claire-blackshaw.com/ or <a href="http://example.com/">this</a></p>`,
